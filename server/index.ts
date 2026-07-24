@@ -311,8 +311,58 @@ app.post('/api/purge-software', async (req, res) => {
   }
 });
 
+// API 12: Automated GitHub Auto-Update Checker Engine
+app.get('/api/check-update', async (req, res) => {
+  try {
+    const currentVersion = 'v1.0.0';
+    const repoUrl = 'https://api.github.com/repos/IamRamgarhia/ai-clutter-cleaner/releases/latest';
+
+    const response = await fetch(repoUrl, {
+      headers: {
+        'User-Agent': 'AI-Clutter-Cleaner-App'
+      }
+    });
+
+    if (!response.ok) {
+      return res.json({
+        updateAvailable: false,
+        currentVersion,
+        message: 'Already running latest release.'
+      });
+    }
+
+    const latestRelease = await response.json();
+    const latestVersion = latestRelease.tag_name || 'v1.0.0';
+    
+    // Compare versions (e.g. v1.0.1 vs v1.0.0)
+    const cleanLatest = latestVersion.replace(/^v/, '');
+    const cleanCurrent = currentVersion.replace(/^v/, '');
+    const isNewer = cleanLatest !== cleanCurrent;
+
+    res.json({
+      updateAvailable: isNewer,
+      currentVersion,
+      latestVersion,
+      releaseNotes: latestRelease.body || 'New features and security updates published on GitHub.',
+      downloadUrl: latestRelease.html_url || 'https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/latest',
+      publishedAt: latestRelease.published_at,
+      assets: latestRelease.assets?.map((a: any) => ({
+        name: a.name,
+        downloadUrl: a.browser_download_url,
+        sizeBytes: a.size
+      })) || []
+    });
+  } catch (e) {
+    res.json({
+      updateAvailable: false,
+      currentVersion: 'v1.0.0',
+      error: (e as Error).message
+    });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`AI-Hygiene Local Engine API running at http://localhost:${PORT}`);
 });
+
 

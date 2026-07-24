@@ -61,6 +61,13 @@ export const App: React.FC = () => {
   const [cleaning, setCleaning] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<TabType>(getInitialTab);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{
+    updateAvailable: boolean;
+    latestVersion?: string;
+    currentVersion?: string;
+    downloadUrl?: string;
+    releaseNotes?: string;
+  } | null>(null);
 
   const changeTab = (tab: TabType) => {
     setActiveTab(tab);
@@ -68,10 +75,21 @@ export const App: React.FC = () => {
     window.location.hash = tab.toLowerCase();
   };
 
+  const checkGitHubUpdate = async () => {
+    try {
+      const res = await fetch('http://localhost:3333/api/check-update');
+      const data = await res.json();
+      setUpdateInfo(data);
+    } catch (e) {
+      console.log('Update check skipped offline');
+    }
+  };
+
 
   // Pre-deletion modal state
   const [pendingCleanItems, setPendingCleanItems] = useState<AICacheItem[]>([]);
   const [isPreDeleteModalOpen, setIsPreDeleteModalOpen] = useState<boolean>(false);
+
 
 const defaultProcesses: AIProcessItem[] = [
   { pid: 60620, ppid: 1, name: 'antigravity.exe', tool: 'Antigravity Subagent Worker', cpuPercent: 4.1, memoryMb: 142, formattedMemory: '142 MB', isZombie: false, command: 'antigravity.exe --subagent-worker' },
@@ -133,6 +151,7 @@ const defaultProcesses: AIProcessItem[] = [
 
   useEffect(() => {
     fetchSystemData();
+    checkGitHubUpdate();
   }, []);
 
   const requestClean = (selectedIds: string[]) => {
@@ -478,7 +497,7 @@ const defaultProcesses: AIProcessItem[] = [
         )}
 
         {activeTab === 'SETTINGS' && (
-          <SettingsTab />
+          <SettingsTab updateInfo={updateInfo} onCheckUpdate={checkGitHubUpdate} />
         )}
       </main>
 
