@@ -10,12 +10,13 @@
     "dev:frontend": "vite",
     "dev:backend": "tsx server/index.ts",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "build": "tsc -b && vite build",
-    "build:win-installer": "vite build && npx electron-builder --win nsis",
-    "build:win-portable": "vite build && npx electron-builder --win portable",
-    "build:mac-dmg": "vite build && npx electron-builder --mac dmg",
-    "build:mac-portable": "vite build && npx electron-builder --mac zip",
-    "build:all": "vite build && npx electron-builder --win nsis portable --mac dmg zip",
+    "build:server": "npx esbuild server/index.ts --bundle --platform=node --target=node18 --outfile=dist/server.cjs --format=cjs",
+    "build": "vite build && npm run build:server",
+    "build:win-installer": "npm run build && npx electron-builder --win nsis",
+    "build:win-portable": "npm run build && npx electron-builder --win portable",
+    "build:mac-dmg": "npm run build && npx electron-builder --mac dmg",
+    "build:mac-portable": "npm run build && npx electron-builder --mac zip",
+    "build:all": "npm run build && npx electron-builder --win nsis portable --mac dmg zip",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -41,6 +42,7 @@
     "concurrently": "^9.1.2",
     "electron": "34.0.0",
     "electron-builder": "25.1.8",
+    "esbuild": "^0.25.0",
     "eslint": "^9.21.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.19",
@@ -52,16 +54,21 @@
   },
   "build": {
     "appId": "com.dicecodes.aicluttercleaner",
-    "productName": "AI Clutter Cleaner",
+    "productName": "AI-Clutter-Cleaner",
     "electronVersion": "34.0.0",
     "directories": {
       "output": "dist-electron"
     },
     "files": [
       "dist/**/*",
-      "electron/**/*",
-      "server/**/*"
+      "electron/**/*"
     ],
+    "portable": {
+      "artifactName": "AI-Clutter-Cleaner-Portable-${version}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "AI-Clutter-Cleaner-Setup-${version}.${ext}"
+    },
     "win": {
       "target": [
         {

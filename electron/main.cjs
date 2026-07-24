@@ -1,34 +1,16 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+
+// Launch bundled Express backend directly inside Electron Node engine (Zero external process spawning)
+try {
+  const serverPath = path.join(__dirname, '..', 'dist', 'server.cjs');
+  require(serverPath);
+  console.log('[Backend] Express Local Engine API started successfully in Electron process.');
+} catch (err) {
+  console.error('[Backend Load Error]:', err);
+}
 
 let mainWindow;
-let backendProcess;
-
-function startBackendServer() {
-  const isWin = process.platform === 'win32';
-  const serverPath = path.join(__dirname, '..', 'server', 'index.ts');
-
-  if (isWin) {
-    backendProcess = spawn('npx.cmd', ['tsx', serverPath], {
-      cwd: path.join(__dirname, '..'),
-      shell: true
-    });
-  } else {
-    backendProcess = spawn('npx', ['tsx', serverPath], {
-      cwd: path.join(__dirname, '..'),
-      shell: true
-    });
-  }
-
-  backendProcess.stdout.on('data', (data) => {
-    console.log(`[Backend Log]: ${data}`);
-  });
-
-  backendProcess.stderr.on('data', (data) => {
-    console.error(`[Backend Error]: ${data}`);
-  });
-}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -45,7 +27,6 @@ function createWindow() {
     }
   });
 
-  // Load production build or local dev server
   const isDev = process.env.NODE_ENV === 'development';
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
@@ -63,23 +44,11 @@ function createWindow() {
 }
 
 app.on('ready', () => {
-  startBackendServer();
-  setTimeout(() => {
-    createWindow();
-  }, 1500);
+  createWindow();
 });
 
 app.on('window-all-closed', () => {
-  if (backendProcess) {
-    backendProcess.kill();
-  }
   if (process.platform !== 'darwin') {
     app.quit();
-  }
-});
-
-app.on('will-quit', () => {
-  if (backendProcess) {
-    backendProcess.kill();
   }
 });

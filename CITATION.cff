@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+title: AI Clutter Cleaner
+message: "If you use this software in your research or projects, please cite it as below."
+type: software
+authors:
+  - family-names: Ramgarhia
+    given-names: Iam
+    website: "https://github.com/IamRamgarhia"
+repository-code: "https://github.com/IamRamgarhia/ai-clutter-cleaner"
+url: "https://github.com/IamRamgarhia/ai-clutter-cleaner"
+abstract: "100% Safe On-Demand AI Disk, Memory & Cache Optimizer for Claude, Cursor, Antigravity & Ollama."
+keywords:
+  - ai clutter cleaner
+  - clean ai clutter
+  - claude cache cleaner
+  - cursor ai storage cleaner
+  - ai memory optimizer
+version: 1.0.0
+date-released: 2026-07-24
+license: MIT
