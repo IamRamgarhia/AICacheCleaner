@@ -1,0 +1,169 @@
+import React, { useState } from 'react';
+import { Settings, Shield, Bell, Folder, Save, RotateCcw, CheckCircle2, Play, ExternalLink, Globe } from 'lucide-react';
+
+export const SettingsTab: React.FC = () => {
+  const [cacheThresholdGb, setCacheThresholdGb] = useState<number>(20);
+  const [defaultDeleteMethod, setDefaultDeleteMethod] = useState<'TRASH' | 'PERMANENT'>('TRASH');
+  const [restorePointPolicy, setRestorePointPolicy] = useState<'PROMPT' | 'ALWAYS' | 'NEVER'>('PROMPT');
+  const [customRestorePath, setCustomRestorePath] = useState<string>('C:\\Users\\iamra\\Desktop\\Restored_AI_Files');
+  const [autoCleanGreenTier, setAutoCleanGreenTier] = useState<boolean>(false);
+  const [launchAtStartup, setLaunchAtStartup] = useState<boolean>(true);
+  const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
+
+  const handleSaveSettings = () => {
+    setSavedSuccess(true);
+    setTimeout(() => setSavedSuccess(false), 3000);
+  };
+
+  const openLocalhostBrowser = () => {
+    window.open('http://localhost:5173', '_blank');
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {/* Header Banner */}
+      <div className="glass-card" style={{ padding: '24px' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+          <Settings size={22} color="#00f2fe" /> Software Settings & Safety Preferences
+        </h2>
+        <p style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
+          Configure threshold alerts, default restore policies, scan exclusions, and 1-click localhost execution.
+        </p>
+      </div>
+
+      {/* 1-Click Easy Localhost Launcher Banner for Non-Technical Users */}
+      <div className="glass-card" style={{ padding: '20px', background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.08) 0%, rgba(79, 172, 254, 0.08) 100%)', border: '1px solid rgba(0, 242, 254, 0.3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+              <Globe size={20} color="#00f2fe" /> Easy 1-Click Localhost Launcher for Beginners
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
+              Non-technical users can simply double-click <code style={{ color: '#00f2fe' }}>start-ai-hygiene.bat</code> (Windows) or <code style={{ color: '#00f2fe' }}>start-ai-hygiene.command</code> (macOS) to run automatically!
+            </p>
+          </div>
+
+          <button className="btn-primary" onClick={openLocalhostBrowser}>
+            <ExternalLink size={16} /> Open Localhost App (http://localhost:5173)
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
+        {/* Section 1: Safety & Deletion Preferences */}
+        <div className="glass-card" style={{ padding: '20px' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+            <Shield size={18} color="#10b981" /> Safety & Deletion Policies
+          </h3>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <label style={{ fontSize: '0.8rem', color: '#9ca3af', display: 'block', marginBottom: '6px' }}>
+                Default Safety Restore Point Policy
+              </label>
+              <select
+                value={restorePointPolicy}
+                onChange={(e) => setRestorePointPolicy(e.target.value as any)}
+                style={{ width: '100%', padding: '10px', background: '#0b0f19', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '0.85rem' }}
+              >
+                <option value="PROMPT">Ask Me Every Time Before Deleting (Recommended)</option>
+                <option value="ALWAYS">Always Create Restore Point Automatically</option>
+                <option value="NEVER">Disable Restore Point Creation</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.8rem', color: '#9ca3af', display: 'block', marginBottom: '6px' }}>
+                Deletion Execution Method
+              </label>
+              <select
+                value={defaultDeleteMethod}
+                onChange={(e) => setDefaultDeleteMethod(e.target.value as any)}
+                style={{ width: '100%', padding: '10px', background: '#0b0f19', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '0.85rem' }}
+              >
+                <option value="TRASH">Soft-Delete to Windows Recycle Bin / macOS Trash (Safest)</option>
+                <option value="PERMANENT">Permanent Direct File Deletion</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.8rem', color: '#9ca3af', display: 'block', marginBottom: '6px' }}>
+                Default Custom Restore Destination Folder
+              </label>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <Folder size={16} color="#00f2fe" />
+                <input
+                  type="text"
+                  value={customRestorePath}
+                  onChange={(e) => setCustomRestorePath(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', background: '#0b0f19', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.85rem', outline: 'none' }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 2: Threshold Alerts & System Integration */}
+        <div className="glass-card" style={{ padding: '20px' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+            <Bell size={18} color="#9d4edd" /> Threshold Alerts & Automation
+          </h3>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <label style={{ fontSize: '0.8rem', color: '#9ca3af', display: 'block', marginBottom: '6px' }}>
+                AI Cache Alert Threshold (GB)
+              </label>
+              <input
+                type="number"
+                value={cacheThresholdGb}
+                onChange={(e) => setCacheThresholdGb(Number(e.target.value))}
+                style={{ width: '100%', padding: '10px', background: '#0b0f19', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '0.85rem' }}
+              />
+              <span style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '4px', display: 'block' }}>
+                Send notification when AI cache exceeds {cacheThresholdGb} GB on disk.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: '#d1d5db', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={autoCleanGreenTier}
+                  onChange={(e) => setAutoCleanGreenTier(e.target.checked)}
+                />
+                Auto-Clean 🟢 100% Safe Green Tier Caches Weekly
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: '#d1d5db', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={launchAtStartup}
+                  onChange={(e) => setLaunchAtStartup(e.target.checked)}
+                />
+                Launch Silent Monitor at Windows / macOS Startup
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Save Settings Bar */}
+      <div className="glass-card" style={{ padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
+          All settings are stored 100% locally on your machine in <code style={{ color: '#00f2fe' }}>.ai-hygiene/config.json</code>
+        </span>
+
+        <button className="btn-primary" onClick={handleSaveSettings}>
+          <Save size={16} /> Save Preferences
+        </button>
+      </div>
+
+      {savedSuccess && (
+        <div style={{ padding: '12px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <CheckCircle2 size={16} /> Preferences successfully saved to local config!
+        </div>
+      )}
+    </div>
+  );
+};

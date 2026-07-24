@@ -1,0 +1,90 @@
+{
+  "name": "ai-clutter-cleaner",
+  "private": true,
+  "version": "1.0.0",
+  "description": "AI Clutter Cleaner — 100% Safe On-Demand AI Disk & Cache Optimizer",
+  "author": "Dice Codes (https://dicecodes.com/)",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev:frontend": "vite",
+    "dev:backend": "tsx server/index.ts",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build": "tsc -b && vite build",
+    "build:win-installer": "vite build && npx electron-builder --win nsis",
+    "build:win-portable": "vite build && npx electron-builder --win portable",
+    "build:mac-dmg": "vite build && npx electron-builder --mac dmg",
+    "build:mac-portable": "vite build && npx electron-builder --mac zip",
+    "build:all": "vite build && npx electron-builder --win nsis portable --mac dmg zip",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "lucide-react": "^0.475.0",
+    "pidusage": "^3.0.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "trash": "^9.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "@types/adm-zip": "^0.5.7",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.5",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "34.0.0",
+    "electron-builder": "25.1.8",
+    "eslint": "^9.21.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^15.15.0",
+    "tsx": "^4.19.3",
+    "typescript": "~5.7.2",
+    "typescript-eslint": "^8.24.1",
+    "vite": "^6.2.0"
+  },
+  "build": {
+    "appId": "com.dicecodes.aicluttercleaner",
+    "productName": "AI Clutter Cleaner",
+    "electronVersion": "34.0.0",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "server/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ]
+    }
+  }
+}
