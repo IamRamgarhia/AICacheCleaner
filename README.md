@@ -8,6 +8,16 @@
 
 ---
 
+## 💡 About AI Clutter Cleaner & Our Mission
+
+**AI Clutter Cleaner** is an open-source, community-driven utility built by **[IamRamgarhia](https://github.com/IamRamgarhia)** to solve a modern developer problem: **AI tool bloat slowing down personal computers**. 
+
+As developers use modern AI IDEs and agents (**Google Antigravity**, **Cursor AI**, **Claude Desktop**, **Ollama**, and **Clawbots**), background prompt caches, V8 bytecodes, and orphaned sidecar processes quietly consume tens of gigabytes of disk space and active RAM. 
+
+Our mission is to provide a **100% free, offline, transparent, and safe utility** that cleans AI clutter with automated safety restore points — ensuring your PC runs fast without ever compromising your project code or privacy.
+
+---
+
 ## ⚡ Why Does Your PC Feel Laggy When Using AI Tools?
 
 If you use AI code editors (**Cursor**, **Google Antigravity**, **Claude Desktop**, **VS Code MCP Servers**, **Ollama**, **Jan.ai**, or **Clawbots**), your system drive is silently accumulating **tens of gigabytes of hidden AI clutter**:
