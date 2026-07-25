@@ -5,8 +5,8 @@ import trash from 'trash';
 import { AICacheItem, SnapshotItem } from '../src/types';
 import { formatBytes } from './scanner';
 
-const snapshotDir = path.join(os.homedir(), '.ai-hygiene', 'snapshots');
-const backupStorageDir = path.join(os.homedir(), '.ai-hygiene', 'backups');
+const snapshotDir = path.join(os.homedir(), '.ai-cache-cleaner', 'snapshots');
+const backupStorageDir = path.join(os.homedir(), '.ai-cache-cleaner', 'backups');
 
 export function ensureDirs() {
   if (!fs.existsSync(snapshotDir)) {

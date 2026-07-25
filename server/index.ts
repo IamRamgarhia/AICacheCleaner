@@ -47,7 +47,7 @@ const defaultConfig: AppConfig = {
 };
 
 function getLocalConfig(): AppConfig {
-  const configDir = path.join(os.homedir(), '.ai-hygiene');
+  const configDir = path.join(os.homedir(), '.ai-cache-cleaner');
   const configFile = path.join(configDir, 'config.json');
   try {
     if (fs.existsSync(configFile)) {
@@ -61,7 +61,7 @@ function getLocalConfig(): AppConfig {
 }
 
 function saveLocalConfig(config: Partial<AppConfig>): AppConfig {
-  const configDir = path.join(os.homedir(), '.ai-hygiene');
+  const configDir = path.join(os.homedir(), '.ai-cache-cleaner');
   const configFile = path.join(configDir, 'config.json');
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true });
@@ -495,7 +495,7 @@ app.post('/api/install-native', async (req, res) => {
 });
 
 const server = app.listen(PORT, '127.0.0.1', () => {
-  console.log(`AI-Hygiene Local Engine API running at http://127.0.0.1:${PORT}`);
+  console.log(`AICacheCleaner Local Engine API running at http://127.0.0.1:${PORT}`);
 });
 
 server.on('error', (err: any) => {

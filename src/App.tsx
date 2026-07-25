@@ -297,7 +297,7 @@ export const App: React.FC = () => {
             </div>
             <div>
               <h1 style={{ fontSize: '1.05rem', fontWeight: 800, letterSpacing: '-0.02em', background: 'linear-gradient(90deg, #ffffff, #9ca3af)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                AI Clutter Cleaner
+                AICacheCleaner
               </h1>
               <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 700, letterSpacing: '0.05em' }}>
                 v1.0 • 100% FREE FOSS

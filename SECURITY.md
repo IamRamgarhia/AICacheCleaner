@@ -1,10 +1,10 @@
-# 🛡️ Security Policy — AI Clutter Cleaner
+# 🛡️ Security Policy — AICacheCleaner
 
 ## 100% On-Demand & Offline Guarantee
 
-AI Clutter Cleaner is engineered with security and user privacy as top priorities:
+AICacheCleaner is engineered with security and user privacy as top priorities:
 
-1. **Zero Background Daemons**: AI Clutter Cleaner NEVER installs autostart background services, background daemons, or hidden telemetry runners.
+1. **Zero Background Daemons**: AICacheCleaner NEVER installs autostart background services, background daemons, or hidden telemetry runners.
 2. **100% Local & Offline**: All scans, file operations, and safety restore points occur strictly on your local machine. Zero data is ever sent to external cloud servers.
 3. **Reversible Safety Snapshots**: Automated Safety Restore Points are created prior to any file deletion so you can recover your data instantly.
 

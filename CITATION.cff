@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-title: AI Clutter Cleaner
+title: AICacheCleaner
 message: "If you use this software in your research or projects, please cite it as below."
 type: software
 authors:
@@ -10,8 +10,8 @@ repository-code: "https://github.com/IamRamgarhia/ai-clutter-cleaner"
 url: "https://github.com/IamRamgarhia/ai-clutter-cleaner"
 abstract: "100% Safe On-Demand AI Disk, Memory & Cache Optimizer for Claude, Cursor, Antigravity & Ollama."
 keywords:
-  - ai clutter cleaner
-  - clean ai clutter
+  - ai cache cleaner
+  - clean ai cache
   - claude cache cleaner
   - cursor ai storage cleaner
   - ai memory optimizer

@@ -1,6 +1,6 @@
 {
-  "appId": "com.dicecodes.aicluttercleaner",
-  "productName": "AI-Clutter-Cleaner",
+  "appId": "com.dicecodes.aicachecleaner",
+  "productName": "AICacheCleaner",
   "copyright": "Copyright © 2026 Dice Codes (https://dicecodes.com/)",
   "directories": {
     "output": "dist-electron"
@@ -10,17 +10,17 @@
     "electron/**/*"
   ],
   "portable": {
-    "artifactName": "AI-Clutter-Cleaner-Portable-${version}.${ext}"
+    "artifactName": "AICacheCleaner-Portable-${version}.${ext}"
   },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "AI-Clutter-Cleaner",
-    "uninstallDisplayName": "AI-Clutter-Cleaner (Uninstall)",
+    "shortcutName": "AICacheCleaner",
+    "uninstallDisplayName": "AICacheCleaner (Uninstall)",
     "runAfterFinish": true,
-    "artifactName": "AI-Clutter-Cleaner-Setup-${version}.${ext}"
+    "artifactName": "AICacheCleaner-Setup-${version}.${ext}"
   },
   "win": {
     "target": [
@@ -36,7 +36,7 @@
     "requestedExecutionLevel": "asInvoker"
   },
   "mac": {
-    "artifactName": "AI-Clutter-Cleaner-macOS-${version}.${ext}",
+    "artifactName": "AICacheCleaner-macOS-${version}.${ext}",
     "target": ["dmg", "zip"],
     "category": "public.app-category.utilities"
   }

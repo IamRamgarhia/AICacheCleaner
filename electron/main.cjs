@@ -38,7 +38,7 @@ if (!gotTheLock) {
       height: 900,
       minWidth: 1024,
       minHeight: 720,
-      title: 'AI Clutter Cleaner — Safety Optimizer',
+      title: 'AICacheCleaner — Safety Optimizer',
       backgroundColor: '#0b0f19',
       autoHideMenuBar: true,
       show: true,

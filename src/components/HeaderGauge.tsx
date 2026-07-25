@@ -37,7 +37,7 @@ export const HeaderGauge: React.FC<HeaderGaugeProps> = ({ metrics, loading, onRe
           </div>
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-0.02em', background: 'linear-gradient(90deg, #ffffff, #9ca3af)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              AI-Hygiene Safety Optimizer
+              AICacheCleaner Safety Optimizer
             </h1>
             <p style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '2px' }}>
               100% Private • Offline • Free AI Memory, Cache & Process Cleaner

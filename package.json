@@ -1,8 +1,8 @@
 {
-  "name": "ai-clutter-cleaner",
+  "name": "ai-cache-cleaner",
   "private": true,
   "version": "1.0.0",
-  "description": "AI Clutter Cleaner — 100% Safe On-Demand AI Disk & Cache Optimizer",
+  "description": "AICacheCleaner — 100% Safe On-Demand AI Disk, Memory & Cache Optimizer",
   "author": "Dice Codes (https://dicecodes.com/)",
   "type": "module",
   "main": "electron/main.cjs",
@@ -41,7 +41,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "electron": "34.0.0",
-    "electron-builder": "25.1.8",
+    "electron-builder": "26.15.3",
     "esbuild": "^0.25.0",
     "eslint": "^9.21.0",
     "eslint-plugin-react-hooks": "^5.1.0",
@@ -53,8 +53,8 @@
     "vite": "^6.2.0"
   },
   "build": {
-    "appId": "com.dicecodes.aicluttercleaner",
-    "productName": "AI-Clutter-Cleaner",
+    "appId": "com.dicecodes.aicachecleaner",
+    "productName": "AICacheCleaner",
     "electronVersion": "34.0.0",
     "directories": {
       "output": "dist-electron"
@@ -64,10 +64,10 @@
       "electron/**/*"
     ],
     "portable": {
-      "artifactName": "AI-Clutter-Cleaner-Portable-${version}.${ext}"
+      "artifactName": "AICacheCleaner-Portable-${version}.${ext}"
     },
     "nsis": {
-      "artifactName": "AI-Clutter-Cleaner-Setup-${version}.${ext}"
+      "artifactName": "AICacheCleaner-Setup-${version}.${ext}"
     },
     "win": {
       "target": [
@@ -82,7 +82,7 @@
       ]
     },
     "mac": {
-      "artifactName": "AI-Clutter-Cleaner-macOS-${version}.${ext}",
+      "artifactName": "AICacheCleaner-macOS-${version}.${ext}",
       "target": [
         {
           "target": "dmg",

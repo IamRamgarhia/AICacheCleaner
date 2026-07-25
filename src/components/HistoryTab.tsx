@@ -66,7 +66,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ snapshots, onRestoreSnap
               <History size={26} color="#00f2fe" /> Safety Restore Points & Cleanup History
             </h2>
             <p style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '4px' }}>
-              Every time you clean files, AI-Hygiene automatically creates a safety snapshot. Restore your data anytime with 1 click directly inside this software!
+              Every time you clean files, AICacheCleaner automatically creates a safety snapshot. Restore your data anytime with 1 click directly inside this software!
             </p>
           </div>
 

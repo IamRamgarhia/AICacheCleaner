@@ -78,7 +78,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div>
             <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Sparkles size={24} color="#00f2fe" /> AI-Hygiene System Dashboard
+              <Sparkles size={24} color="#00f2fe" /> AICacheCleaner System Dashboard
             </h2>
             <p style={{ fontSize: '0.82rem', color: '#34d399', marginTop: '4px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
               <ShieldCheck size={16} /> 100% On-Demand Guarantee: Never runs in the background until launched by user • 100% Offline & Private
