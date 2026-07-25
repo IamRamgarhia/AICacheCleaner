@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 480" width="1000" height="480" role="img" aria-label="AICacheCleaner Safe Delete view showing 100% safe GREEN-tier caches for Claude Desktop and Cursor. Replace with a real screenshot.">
+  <rect width="1000" height="480" fill="#0b0f19"/>
+  <rect x="0" y="0" width="1000" height="480" fill="none" stroke="#1f2937" stroke-width="2"/>
+
+  <!-- Header banner -->
+  <rect x="0" y="0" width="1000" height="90" fill="rgba(16,185,129,0.08)"/>
+  <rect x="0" y="0" width="1000" height="90" fill="none" stroke="#10b981" stroke-opacity="0.3"/>
+  <text x="40" y="42" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="800" fill="#ffffff">🛡️ 100% Safe to Delete Caches — 66.23 MB</text>
+  <text x="40" y="66" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#9ca3af">Temporary UI graphics, V8 bytecodes, and app logs. Zero risk — automatically rebuild on launch.</text>
+  <rect x="820" y="30" width="140" height="38" rx="8" fill="#10b981"/>
+  <text x="890" y="54" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="800" fill="#0b0f19">Clean Selected (4)</text>
+
+  <!-- Card 1 -->
+  <g transform="translate(40,120)" font-family="Segoe UI, Arial, sans-serif">
+    <rect x="0" y="0" width="445" height="150" rx="12" fill="#111827" stroke="#10b981" stroke-opacity="0.5"/>
+    <rect x="14" y="20" width="18" height="18" rx="3" fill="#10b981"/>
+    <path d="M19 27 L23 31 L30 24" stroke="#0b0f19" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <text x="44" y="34" font-size="13" font-weight="700" fill="#ffffff">Cursor Chromium UI Cache_Data</text>
+    <rect x="350" y="20" width="80" height="22" rx="4" fill="rgba(16,185,129,0.15)"/>
+    <text x="390" y="35" text-anchor="middle" font-size="10" font-weight="700" fill="#34d399">100% SAFE</text>
+    <rect x="14" y="56" width="417" height="36" rx="6" fill="#000000" fill-opacity="0.3"/>
+    <text x="24" y="78" font-size="11" fill="#60a5fa" font-family="monospace">C:\...\AppData\Roaming\Cursor\Cache\Cache_Data</text>
+    <rect x="14" y="102" width="417" height="32" rx="6" fill="rgba(16,185,129,0.08)"/>
+    <text x="24" y="122" font-size="10" fill="#34d399">Temp UI graphics. Editor rebuilds on launch — zero data loss.</text>
+  </g>
+
+  <!-- Card 2 -->
+  <g transform="translate(505,120)" font-family="Segoe UI, Arial, sans-serif">
+    <rect x="0" y="0" width="445" height="150" rx="12" fill="#111827" stroke="#10b981" stroke-opacity="0.5"/>
+    <rect x="14" y="20" width="18" height="18" rx="3" fill="#10b981"/>
+    <path d="M19 27 L23 31 L30 24" stroke="#0b0f19" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <text x="44" y="34" font-size="13" font-weight="700" fill="#ffffff">Claude Desktop Diagnostic Logs</text>
+    <rect x="350" y="20" width="80" height="22" rx="4" fill="rgba(16,185,129,0.15)"/>
+    <text x="390" y="35" text-anchor="middle" font-size="10" font-weight="700" fill="#34d399">100% SAFE</text>
+    <rect x="14" y="56" width="417" height="36" rx="6" fill="#000000" fill-opacity="0.3"/>
+    <text x="24" y="78" font-size="11" fill="#60a5fa" font-family="monospace">C:\...\AppData\Roaming\Claude\logs</text>
+    <rect x="14" y="102" width="417" height="32" rx="6" fill="rgba(16,185,129,0.08)"/>
+    <text x="24" y="122" font-size="10" fill="#34d399">Event logs only. Never touches chat history or settings.</text>
+  </g>
+
+  <!-- Card 3 -->
+  <g transform="translate(40,285)" font-family="Segoe UI, Arial, sans-serif">
+    <rect x="0" y="0" width="445" height="150" rx="12" fill="#111827" stroke="#10b981" stroke-opacity="0.5"/>
+    <rect x="14" y="20" width="18" height="18" rx="3" fill="#10b981"/>
+    <path d="M19 27 L23 31 L30 24" stroke="#0b0f19" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <text x="44" y="34" font-size="13" font-weight="700" fill="#ffffff">Claude Desktop GPU Shader Cache</text>
+    <rect x="350" y="20" width="80" height="22" rx="4" fill="rgba(16,185,129,0.15)"/>
+    <text x="390" y="35" text-anchor="middle" font-size="10" font-weight="700" fill="#34d399">100% SAFE</text>
+    <rect x="14" y="56" width="417" height="36" rx="6" fill="#000000" fill-opacity="0.3"/>
+    <text x="24" y="78" font-size="11" fill="#60a5fa" font-family="monospace">C:\...\AppData\Roaming\Claude\GPUCache</text>
+    <rect x="14" y="102" width="417" height="32" rx="6" fill="rgba(16,185,129,0.08)"/>
+    <text x="24" y="122" font-size="10" fill="#34d399">Hardware GPU shader cache. Regenerates on next launch.</text>
+  </g>
+
+  <!-- Card 4 -->
+  <g transform="translate(505,285)" font-family="Segoe UI, Arial, sans-serif">
+    <rect x="0" y="0" width="445" height="150" rx="12" fill="#111827" stroke="#10b981" stroke-opacity="0.5"/>
+    <rect x="14" y="20" width="18" height="18" rx="3" fill="#10b981"/>
+    <path d="M19 27 L23 31 L30 24" stroke="#0b0f19" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <text x="44" y="34" font-size="13" font-weight="700" fill="#ffffff">Cursor V8 Compiled CachedData</text>
+    <rect x="350" y="20" width="80" height="22" rx="4" fill="rgba(16,185,129,0.15)"/>
+    <text x="390" y="35" text-anchor="middle" font-size="10" font-weight="700" fill="#34d399">100% SAFE</text>
+    <rect x="14" y="56" width="417" height="36" rx="6" fill="#000000" fill-opacity="0.3"/>
+    <text x="24" y="78" font-size="11" fill="#60a5fa" font-family="monospace">C:\...\AppData\Roaming\Cursor\CachedData</text>
+    <rect x="14" y="102" width="417" height="32" rx="6" fill="rgba(16,185,129,0.08)"/>
+    <text x="24" y="122" font-size="10" fill="#34d399">V8 engine bytecode. No code or settings — rebuilds on startup.</text>
+  </g>
+
+  <text x="500" y="465" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11" fill="#4b5563" font-style="italic">Illustrative mockup — capture the real Safe Delete view and overwrite screenshots/safe-delete.svg</text>
+</svg>
