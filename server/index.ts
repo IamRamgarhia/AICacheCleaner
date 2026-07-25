@@ -415,7 +415,7 @@ app.post('/api/purge-software', async (req, res) => {
 app.get('/api/check-update', async (req, res) => {
   try {
     const currentVersion = 'v1.0.0';
-    const repoUrl = 'https://api.github.com/repos/IamRamgarhia/ai-clutter-cleaner/releases/latest';
+    const repoUrl = 'https://api.github.com/repos/IamRamgarhia/ai-cache-cleaner/releases/latest';
 
     const response = await fetch(repoUrl, {
       headers: {
@@ -454,7 +454,7 @@ app.get('/api/check-update', async (req, res) => {
       currentVersion,
       latestVersion,
       releaseNotes: latestRelease.body || 'New features and security updates published on GitHub.',
-      downloadUrl: latestRelease.html_url || 'https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/latest',
+      downloadUrl: latestRelease.html_url || 'https://github.com/IamRamgarhia/ai-cache-cleaner/releases/latest',
       publishedAt: latestRelease.published_at,
       assets: latestRelease.assets?.map((a: any) => ({
         name: a.name,
@@ -479,13 +479,13 @@ app.post('/api/install-native', async (req, res) => {
       return res.json({ success: false, message: 'Native installation is currently supported on Windows.' });
     }
 
-    const localSetupPath = path.join(process.cwd(), 'dist-electron', 'AI-Clutter-Cleaner-Setup-1.0.0.exe');
+    const localSetupPath = path.join(process.cwd(), 'dist-electron', 'AICacheCleaner-Setup-1.0.0.exe');
 
     if (fs.existsSync(localSetupPath)) {
       exec(`start "" "${localSetupPath}"`);
       return res.json({ success: true, message: 'Launched Windows Native Setup Installer!' });
     } else {
-      const setupUrl = 'https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/download/v1.0.0/AI-Clutter-Cleaner-Setup-1.0.0.exe';
+      const setupUrl = 'https://github.com/IamRamgarhia/ai-cache-cleaner/releases/download/v1.0.0/AICacheCleaner-Setup-1.0.0.exe';
       exec(`start "" "${setupUrl}"`);
       return res.json({ success: true, message: 'Opened Windows Native Setup Installer download link!' });
     }

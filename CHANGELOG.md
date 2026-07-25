@@ -24,5 +24,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ### 🌐 Learn More
-- **GitHub Repository**: [https://github.com/IamRamgarhia/ai-clutter-cleaner](https://github.com/IamRamgarhia/ai-clutter-cleaner)
+- **GitHub Repository**: [https://github.com/IamRamgarhia/ai-cache-cleaner](https://github.com/IamRamgarhia/ai-cache-cleaner)
 - **Author**: [IamRamgarhia](https://github.com/IamRamgarhia)

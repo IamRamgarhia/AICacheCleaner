@@ -72,7 +72,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
       const data = await res.json();
       setNativeInstallMsg(data.message || 'Launched Native Setup Installer!');
     } catch (e) {
-      window.open('https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/download/v1.0.0/AI-Clutter-Cleaner-Setup-1.0.0.exe', '_blank');
+      window.open('https://github.com/IamRamgarhia/ai-cache-cleaner/releases/download/v1.0.0/AICacheCleaner-Setup-1.0.0.exe', '_blank');
       setNativeInstallMsg('Opening Native Setup Installer download link...');
     } finally {
       setInstallingNative(false);

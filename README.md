@@ -2,9 +2,9 @@
 ### *100% Safe On-Demand AI Disk, Memory & Cache Optimizer for Windows & macOS*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Platform: Windows & macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-blue.svg)](https://github.com/IamRamgarhia/ai-clutter-cleaner)
+[![Platform: Windows & macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-blue.svg)](https://github.com/IamRamgarhia/ai-cache-cleaner)
 [![Security: 100% On--Demand](https://img.shields.io/badge/Security-100%25%20On--Demand%20Offline-success.svg)](#-100-on-demand-security-guarantee)
-[![Downloads](https://img.shields.io/badge/Downloads-v1.0%20Release-brightgreen.svg)](https://github.com/IamRamgarhia/ai-clutter-cleaner/releases)
+[![Downloads](https://img.shields.io/badge/Downloads-v1.0%20Release-brightgreen.svg)](https://github.com/IamRamgarhia/ai-cache-cleaner/releases)
 
 ---
 
@@ -37,8 +37,8 @@ Choose your operating system below. **No installation required for Portable vers
 
 | Operating System | File Type | Release Binary File | Download Link |
 | :--- | :--- | :--- | :--- |
-| 🪟 **Windows** | **Zero-Install Standalone (.exe)** | `AICacheCleaner-Portable-1.0.0.exe` | [⚡ Download Windows Portable Executable](https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/download/v1.0.0/AICacheCleaner-Portable-1.0.0.exe) |
-| 🍏 **Apple Ecosystem (macOS)** | **Standalone Mac Package (.zip)** | `AICacheCleaner-macOS-1.0.0.zip` | [⚡ Download macOS Apple Package](https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/download/v1.0.0/AICacheCleaner-macOS-1.0.0.zip) |
+| 🪟 **Windows** | **Zero-Install Standalone (.exe)** | `AICacheCleaner-Portable-1.0.0.exe` | [⚡ Download Windows Portable Executable](https://github.com/IamRamgarhia/ai-cache-cleaner/releases/download/v1.0.0/AICacheCleaner-Portable-1.0.0.exe) |
+| 🍏 **Apple Ecosystem (macOS)** | **Standalone Mac Package (.zip)** | `AICacheCleaner-macOS-1.0.0.zip` | [⚡ Download macOS Apple Package](https://github.com/IamRamgarhia/ai-cache-cleaner/releases/download/v1.0.0/AICacheCleaner-macOS-1.0.0.zip) |
 
 ---
 
@@ -79,8 +79,8 @@ To run AICacheCleaner locally from source:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/IamRamgarhia/ai-clutter-cleaner.git
-cd ai-clutter-cleaner
+git clone https://github.com/IamRamgarhia/ai-cache-cleaner.git
+cd ai-cache-cleaner
 
 # 2. Install dependencies
 npm install
