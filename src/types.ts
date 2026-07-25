@@ -49,6 +49,7 @@ export type SnapshotItem = {
   totalSizeBytes: number;
   formattedSize: string;
   items: AICacheItem[];
+  note?: string;
 };
 
 export type MigrationPackage = {
