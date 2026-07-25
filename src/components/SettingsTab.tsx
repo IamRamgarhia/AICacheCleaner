@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Shield, Bell, Folder, Save, CheckCircle2, ExternalLink, Globe, RefreshCw, Sparkles } from 'lucide-react';
+import { Settings, Shield, Bell, Folder, Save, CheckCircle2, ExternalLink, Globe, RefreshCw, Sparkles, Download } from 'lucide-react';
 
 interface SettingsTabProps {
   updateInfo?: {
@@ -19,6 +19,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
   const [customRestorePath, setCustomRestorePath] = useState<string>('C:\\Users\\iamra\\Desktop\\Restored_AI_Files');
   const [autoCleanGreenTier, setAutoCleanGreenTier] = useState<boolean>(false);
   const [checkingUpdate, setCheckingUpdate] = useState<boolean>(false);
+  const [installingNative, setInstallingNative] = useState<boolean>(false);
+  const [nativeInstallMsg, setNativeInstallMsg] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
 
   const handleSaveSettings = () => {
@@ -32,6 +34,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
     setTimeout(() => setCheckingUpdate(false), 1500);
   };
 
+  const handleInstallNative = async () => {
+    setInstallingNative(true);
+    try {
+      const res = await fetch('http://localhost:3333/api/install-native', { method: 'POST' });
+      const data = await res.json();
+      setNativeInstallMsg(data.message || 'Launched Native Setup Installer!');
+    } catch (e) {
+      window.open('https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/download/v1.0.0/AI-Clutter-Cleaner-Setup-1.0.0.exe', '_blank');
+      setNativeInstallMsg('Opening Native Setup Installer download link...');
+    } finally {
+      setInstallingNative(false);
+    }
+  };
+
   const openLocalhostBrowser = () => {
     window.open('http://localhost:5173', '_blank');
   };
@@ -41,10 +57,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
       {/* Header Banner */}
       <div className="glass-card" style={{ padding: '24px' }}>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-          <Settings size={22} color="#00f2fe" /> Software Settings & GitHub Auto-Update Engine
+          <Settings size={22} color="#00f2fe" /> Software Settings & Native Installation Options
         </h2>
         <p style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
-          Configure threshold alerts, default restore policies, scan exclusions, and check GitHub for automated updates.
+          Configure threshold alerts, default restore policies, check GitHub auto-updates, and convert Portable app to a Native Windows Installation.
         </p>
       </div>
 
@@ -100,6 +116,33 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
             >
               Get Latest Update
             </a>
+          </div>
+        )}
+      </div>
+
+      {/* Option: Convert Portable to Native Installed App */}
+      <div className="glass-card" style={{ padding: '20px', background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(0, 242, 254, 0.08) 100%)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <span style={{ fontSize: '0.74rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+              CONVERT PORTABLE TO NATIVE APP
+            </span>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#ffffff', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Download size={20} color="#10b981" /> Install as Native Windows Software
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '2px' }}>
+              Running the Portable version? Click below to install as a native Windows desktop app with Start Menu shortcuts and Control Panel integration.
+            </p>
+          </div>
+
+          <button className="btn-primary" onClick={handleInstallNative} disabled={installingNative} style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: 'none' }}>
+            <Download size={16} /> {installingNative ? 'Launching Setup Installer...' : 'Install as Native Windows App'}
+          </button>
+        </div>
+
+        {nativeInstallMsg && (
+          <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CheckCircle2 size={16} /> {nativeInstallMsg}
           </div>
         )}
       </div>

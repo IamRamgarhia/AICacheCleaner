@@ -475,8 +475,8 @@ export const TargetListTable: React.FC<TargetListTableProps> = ({ items, onClean
         </div>
       ) : (
         /* STANDARD FLAT TABLE VIEW */
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+        <div style={{ overflowX: 'auto', width: '100%', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+          <table style={{ width: '100%', minWidth: '850px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-color)', color: '#9ca3af', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 <th style={{ padding: '12px 16px', width: '40px' }}>

@@ -361,8 +361,41 @@ app.get('/api/check-update', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`AI-Hygiene Local Engine API running at http://localhost:${PORT}`);
+// API 13: Convert Portable App to Native Installed Windows Application
+app.post('/api/install-native', async (req, res) => {
+  try {
+    const isWindows = os.platform() === 'win32';
+    if (!isWindows) {
+      return res.json({ success: false, message: 'Native installation is currently supported on Windows.' });
+    }
+
+    const localSetupPath = path.join(process.cwd(), 'dist-electron', 'AI-Clutter-Cleaner-Setup-1.0.0.exe');
+    
+    if (fs.existsSync(localSetupPath)) {
+      exec(`start "" "${localSetupPath}"`);
+      return res.json({ success: true, message: 'Launched Windows Native Setup Installer!' });
+    } else {
+      const setupUrl = 'https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/download/v1.0.0/AI-Clutter-Cleaner-Setup-1.0.0.exe';
+      exec(`start "" "${setupUrl}"`);
+      return res.json({ success: true, message: 'Opened Windows Native Setup Installer download link!' });
+    }
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
 });
+
+const server = app.listen(PORT, '127.0.0.1', () => {
+  console.log(`AI-Hygiene Local Engine API running at http://127.0.0.1:${PORT}`);
+});
+
+
+server.on('error', (err: any) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log(`[Backend Engine] Port ${PORT} is already in use by active local server.`);
+  } else {
+    console.error('[Backend Engine Error]:', err);
+  }
+});
+
 
 

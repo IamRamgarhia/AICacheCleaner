@@ -33,14 +33,12 @@ If you use AI code editors (**Cursor**, **Google Antigravity**, **Claude Desktop
 
 ## 📥 Download AI Clutter Cleaner (v1.0)
 
-Choose your platform below. **No installation required for Portable versions!**
+Choose your operating system below. **No installation required for Portable versions!**
 
-| Platform | Type | File Name | Download Link |
+| Operating System | File Type | Release Binary File | Download Link |
 | :--- | :--- | :--- | :--- |
-| 🪟 **Windows** | **Portable (.exe)** *(Recommended)* | `AI Clutter Cleaner 1.0.0.exe` | [⚡ Download Standalone Executable](https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/download/v1.0.0/AI-Clutter-Cleaner-1.0.0.exe) |
-| 🪟 **Windows** | **Setup Installer (.exe)** | `AI Clutter Cleaner Setup 1.0.0.exe` | [📦 Download NSIS Setup Installer](https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/download/v1.0.0/AI-Clutter-Cleaner-Setup-1.0.0.exe) |
-| 🍏 **macOS** | **Disk Image (.dmg)** | `AI-Clutter-Cleaner-1.0.0.dmg` | [📦 Download Mac DMG Installer](https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/download/v1.0.0/AI-Clutter-Cleaner-1.0.0.dmg) |
-| 🍏 **macOS** | **Portable App (.zip)** | `AI-Clutter-Cleaner-1.0.0-mac.zip` | [⚡ Download Mac Standalone App](https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/download/v1.0.0/AI-Clutter-Cleaner-1.0.0-mac.zip) |
+| 🪟 **Windows** | **Zero-Install Standalone (.exe)** | `AI-Clutter-Cleaner-Portable-1.0.0.exe` | [⚡ Download Windows Portable Executable](https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/download/v1.0.0/AI-Clutter-Cleaner-Portable-1.0.0.exe) |
+| 🍏 **Apple Ecosystem (macOS)** | **Standalone Mac Package (.zip)** | `AI-Clutter-Cleaner-macOS-1.0.0.zip` | [⚡ Download macOS Apple Package](https://github.com/IamRamgarhia/ai-clutter-cleaner/releases/download/v1.0.0/AI-Clutter-Cleaner-macOS-1.0.0.zip) |
 
 ---
 

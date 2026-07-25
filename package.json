@@ -82,6 +82,7 @@
       ]
     },
     "mac": {
+      "artifactName": "AI-Clutter-Cleaner-macOS-${version}.${ext}",
       "target": [
         {
           "target": "dmg",

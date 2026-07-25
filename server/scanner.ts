@@ -36,7 +36,6 @@ export function calculateNonOverlappingSize(items: AICacheItem[]): number {
   return totalBytes;
 }
 
-
 // Iterative Stack-Based Directory Size Calculation (No depth caps, counts all 200,000+ files accurately)
 export function getDirectorySize(dirPath: string): number {
   let totalSize = 0;
@@ -87,7 +86,7 @@ export function isGenuineAIProject(dirPath: string): boolean {
     const folderName = path.basename(dirPath).toLowerCase();
     const fullPathLower = dirPath.toLowerCase();
 
-    // 1. REJECT dot folders, hidden system folders, download directories, or file extensions
+    // REJECT dot folders, hidden system folders, download directories, or file extensions
     if (folderName.startsWith('.')) return false;
     if (fullPathLower.includes('\\downl') || fullPathLower.includes('\\downloads') || fullPathLower.includes('\\temp') || fullPathLower.includes('$recycle')) return false;
 
@@ -101,7 +100,7 @@ export function isGenuineAIProject(dirPath: string): boolean {
       return false;
     }
 
-    // 2. REQUIRE AI / Code Project Fingerprint Files
+    // REQUIRE AI / Code Project Fingerprint Files
     const subFiles = fs.readdirSync(dirPath).map(f => f.toLowerCase());
     const aiCodeFingerprints = [
       'package.json',
@@ -137,7 +136,6 @@ export function isGenuineAIProject(dirPath: string): boolean {
   }
 }
 
-// Helper to determine if a directory is a web app runnable on Localhost
 export function isLocalhostRunnable(dirPath: string): boolean {
   if (!fs.existsSync(dirPath)) return false;
   try {
@@ -166,7 +164,6 @@ export function isLocalhostRunnable(dirPath: string): boolean {
   }
 }
 
-// Deep multi-drive scanner for D:\, E:\, F:\ - Scans 1st level and 2nd level AI / Code projects
 function scanSecondaryDrives(): AICacheItem[] {
   const items: AICacheItem[] = [];
   const secondaryDriveRoots = ['D:\\', 'E:\\', 'F:\\'];
@@ -181,7 +178,6 @@ function scanSecondaryDrives(): AICacheItem[] {
         if (!entry.isDirectory()) continue;
         const entryNameLower = entry.name.toLowerCase();
 
-        // Skip system, Windows, downloads, temp, or dot-prefixed folders
         if (
           entryNameLower.startsWith('$') ||
           entryNameLower.includes('system') ||
@@ -193,7 +189,6 @@ function scanSecondaryDrives(): AICacheItem[] {
 
         const firstLevelPath = path.join(root, entry.name);
 
-        // 1. Check if 1st-level directory itself is an AI project (e.g. D:\calude)
         if (isGenuineAIProject(firstLevelPath)) {
           const size = getDirectorySize(firstLevelPath);
           if (size > 0) {
@@ -216,7 +211,6 @@ function scanSecondaryDrives(): AICacheItem[] {
           }
         }
 
-        // 2. Check 2nd-level subdirectories (e.g. D:\calude\ai memroy ext)
         try {
           const childEntries = fs.readdirSync(firstLevelPath, { withFileTypes: true });
 
@@ -224,7 +218,6 @@ function scanSecondaryDrives(): AICacheItem[] {
             if (!child.isDirectory()) continue;
             const childPath = path.join(firstLevelPath, child.name);
 
-            // STRICT FINGERPRINT CHECK: Only include genuine AI / software code projects
             if (!isGenuineAIProject(childPath)) continue;
 
             const size = getDirectorySize(childPath);
@@ -267,8 +260,93 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
 
   const targets: AICacheItem[] = [];
 
-  // Comprehensive Scan Definitions: All AI IDEs, CLI tools, local LLM runners, caches & model hubs
+  // GOLDEN RULES COMPLIANT SCAN DEFINITIONS:
+  // 🟢 GREEN (100% Safe): Explicit Cache, GPUCache, Code Cache, and logs subfolders ONLY.
+  // 🟡 YELLOW (Review Data): Root directories containing user settings, databases, session tokens, or chat storage.
   const scanDefinitions = [
+    // 🟢 100% SAFE CACHES (GREEN TIER)
+    {
+      id: 'cursor-cache-data',
+      name: 'Cursor Chromium UI Cache_Data (C:)',
+      category: 'Cursor' as const,
+      path: isWindows ? path.join(appData, 'Cursor', 'Cache', 'Cache_Data') : path.join(homeDir, 'Library', 'Caches', 'Cursor', 'Cache_Data'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: '100% Safe. Temporary UI graphics & Chromium webview cache. Automatically regenerates on launch.',
+      safeReason: 'REASON: 100% Safe to delete. Temporary UI resource cache. Automatically rebuilds on launch with zero data loss.'
+    },
+    {
+      id: 'cursor-v8-cacheddata',
+      name: 'Cursor V8 Compiled CachedData (C:)',
+      category: 'Cursor' as const,
+      path: isWindows ? path.join(appData, 'Cursor', 'CachedData') : path.join(homeDir, 'Library', 'Caches', 'Cursor', 'CachedData'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: '100% Safe. Compiled V8 engine bytecode. Automatically regenerates on startup.',
+      safeReason: 'REASON: 100% Safe to delete. V8 engine bytecode cached to accelerate editor startup. Contains no code or settings.'
+    },
+    {
+      id: 'claude-cache-folder',
+      name: 'Claude Desktop Chromium Cache (C:)',
+      category: 'Claude' as const,
+      path: isWindows ? path.join(appData, 'Claude', 'Cache') : path.join(homeDir, 'Library', 'Caches', 'Claude'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: '100% Safe. Temporary UI graphics & webview cache for Claude Desktop.',
+      safeReason: 'REASON: 100% Safe to delete. Temporary UI graphics cache. Does NOT touch chat databases or session tokens.'
+    },
+    {
+      id: 'claude-code-cache-folder',
+      name: 'Claude Desktop V8 Code Cache (C:)',
+      category: 'Claude' as const,
+      path: isWindows ? path.join(appData, 'Claude', 'Code Cache') : path.join(homeDir, 'Library', 'Caches', 'Claude', 'Code Cache'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: '100% Safe. Compiled JS bytecode cache for Claude Desktop app.',
+      safeReason: 'REASON: 100% Safe to delete. Compiled V8 bytecode cache. Automatically rebuilds on launch.'
+    },
+    {
+      id: 'claude-gpu-cache-folder',
+      name: 'Claude Desktop GPU Shader Cache (C:)',
+      category: 'Claude' as const,
+      path: isWindows ? path.join(appData, 'Claude', 'GPUCache') : path.join(homeDir, 'Library', 'Caches', 'Claude', 'GPUCache'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: '100% Safe. GPU hardware acceleration shader cache.',
+      safeReason: 'REASON: 100% Safe to delete. Hardware GPU shader cache.'
+    },
+    {
+      id: 'claude-caches-logs',
+      name: 'Claude Desktop App Diagnostic Logs (C:)',
+      category: 'Claude' as const,
+      path: isWindows ? path.join(appData, 'Claude', 'logs') : path.join(homeDir, 'Library', 'Logs', 'Claude'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: '100% Safe. Diagnostic event logs generated by Claude Desktop.',
+      safeReason: 'REASON: 100% Safe to delete. Diagnostic event logs. Does NOT touch chat history or user settings.'
+    },
+    {
+      id: 'cursor-appdata-local',
+      name: 'Cursor Local App Data & Updates (C:)',
+      category: 'Cursor' as const,
+      path: isWindows ? path.join(localAppData, 'Cursor') : path.join(homeDir, 'Library', 'Caches', 'Cursor'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Local Cursor cache, GPU shader cache, and auto-update packages.',
+      safeReason: 'Local Cursor application cache.'
+    },
+
+    // 🟡 REVIEW / PROTECTED USER DATA & ROOT DIRECTORIES (YELLOW TIER)
+    {
+      id: 'claude-appdata-roaming',
+      name: 'Claude Desktop User Data & Chat Databases (C:)',
+      category: 'Claude' as const,
+      path: isWindows ? path.join(appData, 'Claude') : path.join(homeDir, 'Library', 'Application Support', 'Claude'),
+      tier: 'YELLOW' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Contains Claude Desktop offline chat databases, session keys, and custom MCP settings.',
+      safeReason: 'YELLOW / REVIEW DATA: Contains Claude Desktop session keys, MCP server configs, and offline chat databases. Review before cleaning.'
+    },
     {
       id: 'antigravity-gemini-root',
       name: 'Google Antigravity & Gemini AI Engine Storage (C:)',
@@ -311,33 +389,13 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
     },
     {
       id: 'cursor-appdata-roaming',
-      name: 'Cursor Application Data & Cache (C:)',
+      name: 'Cursor Application Data & Workspace Storage (C:)',
       category: 'Cursor' as const,
       path: isWindows ? path.join(appData, 'Cursor') : path.join(homeDir, 'Library', 'Application Support', 'Cursor'),
       tier: 'YELLOW' as SafetyTier,
       canDelete: true,
-      impactDescription: 'Cursor workspace storage, Chromium cache, V8 bytecode, and crash logs.',
+      impactDescription: 'Cursor workspace storage, extensions state, and session settings.',
       safeReason: 'Cursor app data directory.'
-    },
-    {
-      id: 'cursor-appdata-local',
-      name: 'Cursor Local App Data & Updates (C:)',
-      category: 'Cursor' as const,
-      path: isWindows ? path.join(localAppData, 'Cursor') : path.join(homeDir, 'Library', 'Caches', 'Cursor'),
-      tier: 'GREEN' as SafetyTier,
-      canDelete: true,
-      impactDescription: 'Local Cursor cache, GPU shader cache, and auto-update packages.',
-      safeReason: 'Local Cursor application cache.'
-    },
-    {
-      id: 'claude-appdata-roaming',
-      name: 'Claude Desktop App Data & Logs (C:)',
-      category: 'Claude' as const,
-      path: isWindows ? path.join(appData, 'Claude') : path.join(homeDir, 'Library', 'Application Support', 'Claude'),
-      tier: 'GREEN' as SafetyTier,
-      canDelete: true,
-      impactDescription: '100% Safe. Claude desktop app logs & diagnostic cache.',
-      safeReason: 'REASON: 100% Safe to delete. Diagnostic event logs generated by Claude Desktop.'
     },
     {
       id: 'huggingface-cache',
@@ -431,7 +489,7 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
     }
   }
 
-  // 2. Scan D:\, E:\, F:\ drives for verified 1st and 2nd level AI projects
+  // Scan D:\, E:\, F:\ drives for verified 1st and 2nd level AI projects
   const secondaryItems = scanSecondaryDrives();
   for (const item of secondaryItems) {
     if (!targets.some(t => t.path.toLowerCase() === item.path.toLowerCase())) {
