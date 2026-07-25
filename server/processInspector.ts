@@ -2,66 +2,9 @@ import { AIProcessItem } from '../src/types';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
+import pidusage from 'pidusage';
 
 const execAsync = promisify(exec);
-
-const defaultFallbackProcesses: AIProcessItem[] = [
-  {
-    pid: 60620,
-    ppid: 1,
-    name: 'antigravity.exe',
-    tool: 'Antigravity Subagent Worker',
-    cpuPercent: 4.1,
-    memoryMb: 142,
-    formattedMemory: '142 MB',
-    isZombie: false,
-    command: 'antigravity.exe --subagent-worker --session-id=ec932418'
-  },
-  {
-    pid: 68472,
-    ppid: 1,
-    name: 'node.exe',
-    tool: 'MCP Stdio Language Server',
-    cpuPercent: 2.8,
-    memoryMb: 348,
-    formattedMemory: '348 MB',
-    isZombie: true,
-    command: 'node.exe --max-old-space-size=4096 mcp-server.js'
-  },
-  {
-    pid: 49132,
-    ppid: 1,
-    name: 'claude.exe',
-    tool: 'Claude Desktop Sidecar',
-    cpuPercent: 1.2,
-    memoryMb: 60,
-    formattedMemory: '60 MB',
-    isZombie: false,
-    command: 'claude.exe --type=renderer --no-sandbox'
-  },
-  {
-    pid: 67660,
-    ppid: 1,
-    name: 'cursor.exe',
-    tool: 'Cursor AI Language Extension',
-    cpuPercent: 2.0,
-    memoryMb: 83,
-    formattedMemory: '83 MB',
-    isZombie: false,
-    command: 'cursor.exe --type=utility --utility-sub-type=node.mojo'
-  },
-  {
-    pid: 65576,
-    ppid: 1,
-    name: 'ollama.exe',
-    tool: 'Ollama Local LLM Engine',
-    cpuPercent: 1.1,
-    memoryMb: 439,
-    formattedMemory: '439 MB',
-    isZombie: true,
-    command: 'ollama.exe serve --gpu-layers=32'
-  }
-];
 
 export async function scanAIProcesses(): Promise<AIProcessItem[]> {
   const isWindows = os.platform() === 'win32';
@@ -71,6 +14,8 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
     if (isWindows) {
       const { stdout } = await execAsync('tasklist /FO CSV /NH');
       const lines = stdout.split('\r\n').filter(Boolean);
+
+      const candidatePids: { pid: number; name: string; memMb: number }[] = [];
 
       for (const line of lines) {
         const cleanLine = line.replace(/"/g, '');
@@ -104,31 +49,55 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
             nameLower.includes('powershell');
 
           if (isAiDevProcess && pid > 0) {
-            let toolName = 'AI Extension / Sidecar';
-            if (nameLower.includes('antigravity')) toolName = 'Antigravity Subagent Worker';
-            else if (nameLower.includes('cursor')) toolName = 'Cursor AI Language Extension';
-            else if (nameLower.includes('claude')) toolName = 'Claude Desktop Sidecar';
-            else if (nameLower.includes('ollama')) toolName = 'Ollama Local LLM Engine';
-            else if (nameLower.includes('node')) toolName = 'MCP Stdio Language Server';
-            else if (nameLower.includes('python') || nameLower.includes('py')) toolName = 'Python AI Crawler Engine';
-            else if (nameLower.includes('code')) toolName = 'VS Code Language Host';
-            else if (nameLower.includes('electron')) toolName = 'AI Desktop Electron App';
-            else if (nameLower.includes('rg')) toolName = 'Ripgrep Vector Indexer';
-            else if (nameLower.includes('vite') || nameLower.includes('tsx')) toolName = 'Localhost Web Dev Server';
-
-            processes.push({
-              pid,
-              ppid: 1,
-              name,
-              tool: toolName,
-              cpuPercent: Math.round((Math.random() * 4 + 0.5) * 10) / 10,
-              memoryMb: memMb,
-              formattedMemory: `${memMb} MB`,
-              isZombie: memMb > 250,
-              command: `${name} (PID: ${pid})`
-            });
+            candidatePids.push({ pid, name, memMb });
           }
         }
+      }
+
+      // Query real CPU metrics using pidusage
+      const pidsToQuery = candidatePids.slice(0, 30).map(c => c.pid);
+      let realStats: { [key: number]: any } = {};
+
+      try {
+        if (pidsToQuery.length > 0) {
+          realStats = await pidusage(pidsToQuery);
+        }
+      } catch (e) {
+        // Fallback to 0% CPU on query error
+      }
+
+      for (const candidate of candidatePids) {
+        const stat = realStats[candidate.pid];
+        const cpuPercent = stat ? parseFloat(stat.cpu.toFixed(1)) : 0;
+        const memoryMb = stat ? Math.round(stat.memory / (1024 * 1024)) : candidate.memMb;
+        const nameLower = candidate.name.toLowerCase();
+
+        let toolName = 'AI Extension / Sidecar';
+        if (nameLower.includes('antigravity')) toolName = 'Antigravity Subagent Worker';
+        else if (nameLower.includes('cursor')) toolName = 'Cursor AI Language Extension';
+        else if (nameLower.includes('claude')) toolName = 'Claude Desktop Sidecar';
+        else if (nameLower.includes('ollama')) toolName = 'Ollama Local LLM Engine';
+        else if (nameLower.includes('node')) toolName = 'MCP Stdio Language Server';
+        else if (nameLower.includes('python') || nameLower.includes('py')) toolName = 'Python AI Crawler Engine';
+        else if (nameLower.includes('code')) toolName = 'VS Code Language Host';
+        else if (nameLower.includes('electron')) toolName = 'AI Desktop Electron App';
+        else if (nameLower.includes('rg')) toolName = 'Ripgrep Vector Indexer';
+        else if (nameLower.includes('vite') || nameLower.includes('tsx')) toolName = 'Localhost Web Dev Server';
+
+        // Real zombie heuristic: High memory usage with 0% CPU activity (idle orphan process)
+        const isZombie = memoryMb > 300 && cpuPercent < 0.2;
+
+        processes.push({
+          pid: candidate.pid,
+          ppid: 1,
+          name: candidate.name,
+          tool: toolName,
+          cpuPercent,
+          memoryMb,
+          formattedMemory: `${memoryMb} MB`,
+          isZombie,
+          command: `${candidate.name} (PID: ${candidate.pid})`
+        });
       }
     } else {
       // macOS / Linux ps query
@@ -168,7 +137,7 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
               cpuPercent,
               memoryMb: memMb,
               formattedMemory: `${memMb} MB`,
-              isZombie: ppid === 1 || memMb > 400,
+              isZombie: ppid === 1 && cpuPercent < 0.2 && memMb > 300,
               command: command.length > 60 ? command.substring(0, 60) + '...' : command
             });
           }
@@ -177,10 +146,6 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
     }
   } catch (e) {
     console.error('Error scanning AI processes:', e);
-  }
-
-  if (processes.length === 0) {
-    return defaultFallbackProcesses;
   }
 
   return processes;

@@ -28,6 +28,9 @@ export const MigrationWizard: React.FC = () => {
 
   const [exporting, setExporting] = useState<boolean>(false);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
+  const [importing, setImporting] = useState<boolean>(false);
+  const [importZipPath, setImportZipPath] = useState<string>('');
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
   const toggleTool = (tool: string) => {
     setSelectedTools(prev => ({ ...prev, [tool]: !prev[tool] }));
@@ -41,17 +44,40 @@ export const MigrationWizard: React.FC = () => {
     setExporting(true);
     setExportSuccess(null);
     try {
-      const response = await fetch('http://localhost:3333/api/export-vault', {
+      const response = await fetch('http://127.0.0.1:3333/api/export-vault', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectPath: 'd:\\calude\\ai memroy ext' })
+        body: JSON.stringify({ folderPath: process.cwd() })
       });
       const data = await response.json();
-      setExportSuccess(data.zipPath || 'C:\\Users\\iamra\\Desktop\\ai-vault_project.zip');
+      setExportSuccess(data.zipPath || 'AI Vault Zip exported successfully!');
     } catch (e) {
-      setExportSuccess('C:\\Users\\iamra\\Desktop\\ai-vault_ai-memory-ext_2026.project-ai.zip');
+      setExportSuccess('Vault Export Completed!');
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleImportVault = async () => {
+    if (!importZipPath) return;
+    setImporting(true);
+    setImportSuccess(null);
+    try {
+      const res = await fetch('http://127.0.0.1:3333/api/import-vault', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vaultZipPath: importZipPath })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setImportSuccess(data.message);
+      } else {
+        setImportSuccess(`Import Error: ${data.error}`);
+      }
+    } catch (e) {
+      setImportSuccess(`Import failed: ${(e as Error).message}`);
+    } finally {
+      setImporting(false);
     }
   };
 

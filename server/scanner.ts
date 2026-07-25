@@ -4,14 +4,14 @@ import os from 'os';
 import { AICacheItem, SafetyTier } from '../src/types';
 
 export function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
+  if (bytes <= 0 || isNaN(bytes)) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// Prevents double-counting nested subfolders (e.g. D:\calude\ai memroy ext inside D:\calude)
+// Prevents double-counting nested subfolders
 export function calculateNonOverlappingSize(items: AICacheItem[]): number {
   if (!items || items.length === 0) return 0;
   
@@ -36,7 +36,7 @@ export function calculateNonOverlappingSize(items: AICacheItem[]): number {
   return totalBytes;
 }
 
-// Iterative Stack-Based Directory Size Calculation (No depth caps, counts all 200,000+ files accurately)
+// Iterative Stack-Based Directory Size Calculation
 export function getDirectorySize(dirPath: string): number {
   let totalSize = 0;
   if (!fs.existsSync(dirPath)) return 0;
@@ -127,10 +127,7 @@ export function isGenuineAIProject(dirPath: string): boolean {
       'src'
     ];
 
-    const hasFingerprint = aiCodeFingerprints.some(fp => subFiles.includes(fp));
-    const isSpecialKnownAiPath = fullPathLower.includes('calude\\ai memroy ext') || fullPathLower.endsWith('\\calude');
-
-    return hasFingerprint || isSpecialKnownAiPath;
+    return aiCodeFingerprints.some(fp => subFiles.includes(fp));
   } catch (e) {
     return false;
   }
@@ -260,11 +257,7 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
 
   const targets: AICacheItem[] = [];
 
-  // GOLDEN RULES COMPLIANT SCAN DEFINITIONS:
-  // 🟢 GREEN (100% Safe): Explicit Cache, GPUCache, Code Cache, and logs subfolders ONLY.
-  // 🟡 YELLOW (Review Data): Root directories containing user settings, databases, session tokens, or chat storage.
   const scanDefinitions = [
-    // 🟢 100% SAFE CACHES (GREEN TIER)
     {
       id: 'cursor-cache-data',
       name: 'Cursor Chromium UI Cache_Data (C:)',
@@ -335,8 +328,6 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       impactDescription: 'Local Cursor cache, GPU shader cache, and auto-update packages.',
       safeReason: 'Local Cursor application cache.'
     },
-
-    // 🟡 REVIEW / PROTECTED USER DATA & ROOT DIRECTORIES (YELLOW TIER)
     {
       id: 'claude-appdata-roaming',
       name: 'Claude Desktop User Data & Chat Databases (C:)',
@@ -489,7 +480,6 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
     }
   }
 
-  // Scan D:\, E:\, F:\ drives for verified 1st and 2nd level AI projects
   const secondaryItems = scanSecondaryDrives();
   for (const item of secondaryItems) {
     if (!targets.some(t => t.path.toLowerCase() === item.path.toLowerCase())) {

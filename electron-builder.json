@@ -1,16 +1,27 @@
 {
-  "appId": "org.aihygiene.desktop",
-  "productName": "AI-Hygiene",
-  "copyright": "Copyright © 2026 AI-Hygiene FOSS Community",
+  "appId": "com.dicecodes.aicluttercleaner",
+  "productName": "AI-Clutter-Cleaner",
+  "copyright": "Copyright © 2026 Dice Codes (https://dicecodes.com/)",
   "directories": {
-    "output": "dist-desktop"
+    "output": "dist-electron"
   },
   "files": [
     "dist/**/*",
-    "server/**/*",
-    "node_modules/**/*",
-    "package.json"
+    "electron/**/*"
   ],
+  "portable": {
+    "artifactName": "AI-Clutter-Cleaner-Portable-${version}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "AI-Clutter-Cleaner",
+    "uninstallDisplayName": "AI-Clutter-Cleaner (Uninstall)",
+    "runAfterFinish": true,
+    "artifactName": "AI-Clutter-Cleaner-Setup-${version}.${ext}"
+  },
   "win": {
     "target": [
       {
@@ -24,16 +35,8 @@
     ],
     "requestedExecutionLevel": "asInvoker"
   },
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true,
-    "createDesktopShortcut": true,
-    "createStartMenuShortcut": true,
-    "shortcutName": "AI-Hygiene",
-    "uninstallDisplayName": "AI-Hygiene (Uninstall)",
-    "runAfterFinish": true
-  },
   "mac": {
+    "artifactName": "AI-Clutter-Cleaner-macOS-${version}.${ext}",
     "target": ["dmg", "zip"],
     "category": "public.app-category.utilities"
   }

@@ -43,8 +43,9 @@ if (!gotTheLock) {
       autoHideMenuBar: true,
       show: true,
       webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false
+        preload: path.join(__dirname, 'preload.cjs'),
+        nodeIntegration: false,
+        contextIsolation: true
       }
     });
 

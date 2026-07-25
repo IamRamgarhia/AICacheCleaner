@@ -164,17 +164,20 @@ export const App: React.FC = () => {
     const targetPaths = pendingCleanItems.map(i => i.path);
 
     try {
-      const response = await fetch('http://localhost:3333/api/clean', {
+      const response = await fetch('http://127.0.0.1:3333/api/clean', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemIds, targetPaths, createRestorePoint })
       });
-      await response.json();
-      showToast(`Cleaned ${itemIds.length} items! ${createRestorePoint ? 'Restore Point Created' : 'Soft-deleted to Recycle Bin'}`);
-      fetchSystemData();
+      const data = await response.json();
+      if (response.ok && data.success) {
+        showToast(`Cleaned ${itemIds.length} items! ${createRestorePoint ? 'Restore Point Created' : 'Soft-deleted to Recycle Bin'}`);
+        fetchSystemData();
+      } else {
+        showToast(`Error: ${data.error || 'Failed to clean items.'}`);
+      }
     } catch (e) {
-      showToast(`Soft-deleted ${itemIds.length} items to Recycle Bin safely.`);
-      fetchSystemData();
+      showToast(`Network / API error: ${(e as Error).message}`);
     } finally {
       setCleaning(false);
       setPendingCleanItems([]);
@@ -183,47 +186,51 @@ export const App: React.FC = () => {
 
   const handleOpenFolder = async (folderPath: string) => {
     try {
-      await fetch('http://localhost:3333/api/open-folder', {
+      await fetch('http://127.0.0.1:3333/api/open-folder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folderPath })
       });
     } catch (e) {
-      console.warn('API offline - cannot launch Windows Explorer');
+      console.warn('API offline - cannot launch Explorer');
     }
   };
 
   const handleRestoreSnapshot = async (snapshotId: string, customDestinationPath?: string) => {
     try {
-      const response = await fetch('http://localhost:3333/api/restore', {
+      const response = await fetch('http://127.0.0.1:3333/api/snapshots/restore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ snapshotId, customDestinationPath })
       });
       const data = await response.json();
-      if (data.success) {
-        showToast(`Restored snapshot ${snapshotId} to ${customDestinationPath || 'original locations'}!`);
+      if (response.ok && data.success) {
+        showToast(`Restored snapshot ${snapshotId}! (${data.restoredCount || 0} items recovered)`);
         fetchSystemData();
       } else {
-        showToast(`Restore complete! ${data.restoredPaths?.length || 0} files recovered.`);
+        showToast(`Error restoring snapshot: ${data.error || 'Failed'}`);
       }
     } catch (e) {
-      showToast(`Restored snapshot ${snapshotId}!`);
+      showToast(`Failed to restore snapshot: ${(e as Error).message}`);
     }
   };
 
   const handleKillProcess = async (pid: number) => {
     try {
-      await fetch('http://localhost:3333/api/processes/kill', {
+      const res = await fetch('http://127.0.0.1:3333/api/processes/kill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pid })
       });
-      showToast(`Terminated sidecar process (PID: ${pid})`);
-      setProcesses(processes.filter(p => p.pid !== pid));
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Terminated process (PID: ${pid})`);
+        setProcesses(prev => prev.filter(p => p.pid !== pid));
+      } else {
+        showToast(`Failed to terminate process ${pid}`);
+      }
     } catch (e) {
-      setProcesses(processes.filter(p => p.pid !== pid));
-      showToast(`Terminated sidecar process (PID: ${pid})`);
+      showToast(`Error terminating process: ${(e as Error).message}`);
     }
   };
 

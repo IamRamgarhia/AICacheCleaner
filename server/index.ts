@@ -10,25 +10,66 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import net from 'net';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
+import AdmZip from 'adm-zip';
 
 const app = express();
 const PORT = 3333;
 
-app.use(cors());
+// Security Hardening: Restrict CORS to localhost and local app origins ONLY
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1') || origin.startsWith('app://') || origin.startsWith('file://')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Blocked by CORS security policy: External origins forbidden'));
+    }
+  }
+}));
+
 app.use(express.json());
 
-function findFreePort(startingPort: number = 5180): Promise<number> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.listen(startingPort, () => {
-      const port = (server.address() as net.AddressInfo).port;
-      server.close(() => resolve(port));
-    });
-    server.on('error', () => {
-      resolve(findFreePort(startingPort + 1));
-    });
-  });
+// Persistent Local Configuration Engine
+interface AppConfig {
+  cacheThresholdGb: number;
+  defaultDeleteMethod: 'TRASH' | 'PERMANENT';
+  restorePointPolicy: 'PROMPT' | 'ALWAYS' | 'NEVER';
+  customRestorePath: string;
+  autoCleanGreenTier: boolean;
+}
+
+const defaultConfig: AppConfig = {
+  cacheThresholdGb: 20,
+  defaultDeleteMethod: 'TRASH',
+  restorePointPolicy: 'PROMPT',
+  customRestorePath: path.join(os.homedir(), 'Desktop', 'Restored_AI_Files'),
+  autoCleanGreenTier: false
+};
+
+function getLocalConfig(): AppConfig {
+  const configDir = path.join(os.homedir(), '.ai-hygiene');
+  const configFile = path.join(configDir, 'config.json');
+  try {
+    if (fs.existsSync(configFile)) {
+      const raw = fs.readFileSync(configFile, 'utf-8');
+      return { ...defaultConfig, ...JSON.parse(raw) };
+    }
+  } catch (e) {
+    // Return default on error
+  }
+  return defaultConfig;
+}
+
+function saveLocalConfig(config: Partial<AppConfig>): AppConfig {
+  const configDir = path.join(os.homedir(), '.ai-hygiene');
+  const configFile = path.join(configDir, 'config.json');
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true });
+  }
+  const current = getLocalConfig();
+  const updated = { ...current, ...config };
+  fs.writeFileSync(configFile, JSON.stringify(updated, null, 2), 'utf-8');
+  return updated;
 }
 
 // API 1: Scan AI Disk Caches & Multi-Drive Projects
@@ -36,18 +77,21 @@ app.get('/api/scan', async (req, res) => {
   try {
     const rawItems = await scanAICaches();
 
+    // Dynamic scanning across user home directory and primary drive
+    const userHome = os.homedir();
     const secondaryScanPaths = [
-      { path: 'd:\\calude\\ai memroy ext', name: 'AI Project Footprint: AI Hygiene App (D:)', category: 'Antigravity' as const },
-      { path: 'd:\\calude', name: 'AI Projects Root Directory (D:)', category: 'Antigravity' as const }
+      { path: path.join(userHome, '.gemini'), name: 'Google Antigravity & Gemini AI Engine Storage', category: 'Antigravity' as const },
+      { path: path.join(userHome, '.claude'), name: 'Claude CLI & Desktop Prompt History', category: 'Claude' as const },
+      { path: path.join(userHome, '.cursor'), name: 'Cursor AI Workspace Logs & Extension Cache', category: 'Cursor' as const }
     ];
 
     for (const target of secondaryScanPaths) {
       if (fs.existsSync(target.path)) {
         if (!rawItems.some(i => path.normalize(i.path).toLowerCase() === path.normalize(target.path).toLowerCase())) {
-          const size = getDirectorySize(target.path, 10);
+          const size = getDirectorySize(target.path);
           const stat = fs.statSync(target.path);
           rawItems.push({
-            id: `d-drive-${target.path.replace(/[^a-zA-Z0-9]/g, '-')}`,
+            id: `home-${target.path.replace(/[^a-zA-Z0-9]/g, '-')}`,
             name: target.name,
             category: target.category,
             path: target.path,
@@ -55,9 +99,9 @@ app.get('/api/scan', async (req, res) => {
             formattedSize: formatBytes(size),
             tier: 'YELLOW',
             canDelete: true,
-            impactDescription: `Active AI coding project storage on Drive D:.`,
+            impactDescription: `User home AI environment storage at ${target.path}.`,
             lastModified: stat.mtime.toISOString().split('T')[0],
-            safeReason: `Active AI project directory on Drive D:. Deleting removes local project build cache and AI transcript state.`
+            safeReason: `User AI directory. Deleting removes local chat history and transcript state.`
           });
         }
       }
@@ -76,17 +120,13 @@ app.get('/api/scan', async (req, res) => {
     }
 
     const processes = await scanAIProcesses();
-
-    // Total AI Disk Memory Footprint Across All Drives (Non-overlapping sum to prevent double counting nested subfolders)
     const totalAICacheBytes = calculateNonOverlappingSize(items);
 
-
-    // EXACT MATH FIX: Safe Reclaimable ONLY counts 100% Safe GREEN Tier Caches!
     const reclaimableBytes = items.filter(i => i.tier === 'GREEN' && i.canDelete).reduce((acc, i) => acc + i.sizeBytes, 0);
     const totalAIRAMBytes = processes.reduce((acc, p) => acc + (p.memoryMb * 1024 * 1024), 0);
     const totalAIRAMMb = processes.reduce((acc, p) => acc + p.memoryMb, 0);
 
-    let totalAIProjectsBytes = items.filter(i => i.path.startsWith('D:') || i.path.startsWith('d:') || i.name.includes('Project') || i.name.includes('Workspace')).reduce((acc, i) => acc + i.sizeBytes, 0);
+    let totalAIProjectsBytes = items.filter(i => i.name.includes('Project') || i.name.includes('Workspace')).reduce((acc, i) => acc + i.sizeBytes, 0);
     if (totalAIProjectsBytes === 0) totalAIProjectsBytes = totalAICacheBytes;
 
     const sizePenalty = Math.min(50, Math.floor(reclaimableBytes / (1024 * 1024 * 1024) * 2));
@@ -98,13 +138,14 @@ app.get('/api/scan', async (req, res) => {
       totalAICacheFormatted: formatBytes(totalAICacheBytes),
       totalAIProjectsBytes,
       totalAIProjectsFormatted: formatBytes(totalAIProjectsBytes),
-      totalAIRAMBytes,
-      totalAIRAMFormatted: `${(totalAIRAMMb / 1024).toFixed(2)} GB (${totalAIRAMMb} MB)`,
       reclaimableBytes,
       reclaimableFormatted: formatBytes(reclaimableBytes),
+      totalAIRAMBytes,
+      totalAIRAMMb,
+      totalAIRAMFormatted: `${totalAIRAMMb} MB`,
+      activeProcessCount: processes.length,
       hygieneScore,
-      itemCount: items.length,
-      zombieProcessCount: processes.filter(p => p.isZombie).length
+      lastScanTimestamp: new Date().toISOString()
     };
 
     res.json({ metrics, items, processes });
@@ -113,118 +154,152 @@ app.get('/api/scan', async (req, res) => {
   }
 });
 
-// API 2: 1-Click Launch AI Project on Localhost with Zero Port Conflict
-app.post('/api/launch-project', async (req, res) => {
+// API 2: Perform Safe Cache Cleanup (Trash / Recycle Bin Move)
+app.post('/api/clean', async (req, res) => {
   try {
-    const { folderPath } = req.body;
-    if (!folderPath || !fs.existsSync(folderPath)) {
-      return res.status(400).json({ error: 'Valid folderPath is required' });
+    const { itemIds, createRestorePoint, customRestoreFolder } = req.body;
+    const rawItems = await scanAICaches();
+    const targetItems = rawItems.filter(i => itemIds.includes(i.id));
+
+    if (targetItems.length === 0) {
+      return res.status(400).json({ error: 'No valid items found for cleaning.' });
     }
 
-    const freePort = await findFreePort(5180);
-    const isWindows = process.platform === 'win32';
-    
-    const packageJsonPath = path.join(folderPath, 'package.json');
-    let launchCmd = '';
-
-    if (fs.existsSync(packageJsonPath)) {
-      launchCmd = isWindows ? `start cmd /k "cd /d "${folderPath}" && npx vite --port ${freePort} --open"` : `cd "${folderPath}" && npx vite --port ${freePort} --open &`;
-    } else {
-      launchCmd = isWindows ? `start "" "${folderPath}"` : `open "${folderPath}"`;
+    // Optional or Mandatory Safety Snapshot before clean
+    let snapshotId: string | undefined;
+    if (createRestorePoint !== false) {
+      const snap = await createSnapshot(targetItems, undefined, customRestoreFolder);
+      snapshotId = snap.id;
     }
 
-    exec(launchCmd, (err) => {
-      if (err) {
-        console.error(`Launch error: ${err.message}`);
-      }
-    });
-
+    const result = await deleteItemsSafely(targetItems);
     res.json({
       success: true,
-      port: freePort,
-      url: `http://localhost:${freePort}`,
-      launchedPath: folderPath
+      cleanedCount: result.cleanedIds.length,
+      failedCount: result.failedIds.length,
+      reclaimedBytes: result.reclaimedBytes,
+      reclaimedFormatted: formatBytes(result.reclaimedBytes),
+      snapshotId
     });
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
   }
 });
 
-// API 3: Open Folder in Windows Explorer / macOS Finder
-app.post('/api/open-folder', (req, res) => {
+// API 3: System Metrics Only
+app.get('/api/metrics', async (req, res) => {
   try {
-    const { folderPath } = req.body;
-    if (!folderPath) {
-      return res.status(400).json({ error: 'folderPath is required' });
-    }
-
-    const normalizedPath = path.normalize(folderPath);
-    let targetPath = normalizedPath;
-
-    if (!fs.existsSync(normalizedPath)) {
-      targetPath = path.dirname(normalizedPath);
-    }
-
-    if (!fs.existsSync(targetPath)) {
-      targetPath = process.cwd();
-    }
-
-    const isWindows = process.platform === 'win32';
-    const command = isWindows ? `start "" "${targetPath}"` : `open "${targetPath}"`;
-
-    exec(command, (err) => {
-      if (err) {
-        console.error(`Explorer launch error: ${err.message}`);
-      }
-      res.json({ success: true, openedPath: targetPath });
-    });
-  } catch (e) {
-    res.status(500).json({ error: (e as Error).message });
-  }
-});
-
-// API 4: Scan Running Processes
-app.get('/api/processes', async (req, res) => {
-  try {
+    const items = await scanAICaches();
     const processes = await scanAIProcesses();
-    res.json({ processes });
+    const totalAICacheBytes = calculateNonOverlappingSize(items);
+    const reclaimableBytes = items.filter(i => i.tier === 'GREEN' && i.canDelete).reduce((acc, i) => acc + i.sizeBytes, 0);
+    const totalAIRAMMb = processes.reduce((acc, p) => acc + p.memoryMb, 0);
+
+    const metrics: SystemMetrics = {
+      totalAICacheBytes,
+      totalAICacheFormatted: formatBytes(totalAICacheBytes),
+      totalAIProjectsBytes: totalAICacheBytes,
+      totalAIProjectsFormatted: formatBytes(totalAICacheBytes),
+      reclaimableBytes,
+      reclaimableFormatted: formatBytes(reclaimableBytes),
+      totalAIRAMBytes: totalAIRAMMb * 1024 * 1024,
+      totalAIRAMMb,
+      totalAIRAMFormatted: `${totalAIRAMMb} MB`,
+      activeProcessCount: processes.length,
+      hygieneScore: Math.max(10, 100 - Math.min(50, Math.floor(reclaimableBytes / (1024 * 1024 * 1024) * 2))),
+      lastScanTimestamp: new Date().toISOString()
+    };
+
+    res.json({ metrics });
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
   }
 });
 
-// API 5: Terminate Process
+// API 4: Get Saved Configuration
+app.get('/api/config', (req, res) => {
+  res.json(getLocalConfig());
+});
+
+// API 5: Save Local Configuration
+app.post('/api/config', (req, res) => {
+  try {
+    const updated = saveLocalConfig(req.body);
+    res.json({ success: true, config: updated });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// API 5b: Real Local AI Memory & Transcript Inspector
+app.get('/api/memories', async (req, res) => {
+  try {
+    const homeDir = os.homedir();
+    const memories: any[] = [];
+    let counter = 1;
+
+    const geminiBrain = path.join(homeDir, '.gemini', 'antigravity', 'brain');
+    if (fs.existsSync(geminiBrain)) {
+      try {
+        const convDirs = fs.readdirSync(geminiBrain);
+        for (const d of convDirs.slice(0, 10)) {
+          const fullPath = path.join(geminiBrain, d);
+          if (fs.statSync(fullPath).isDirectory()) {
+            memories.push({
+              id: `mem-${counter++}`,
+              title: `Google Antigravity Transcript (${d.substring(0, 8)}...)`,
+              tool: 'Antigravity',
+              snippet: `Conversation brain state stored at ~/.gemini/antigravity/brain/${d}`,
+              size: formatBytes(getDirectorySize(fullPath)),
+              sensitiveFlag: true,
+              path: fullPath
+            });
+          }
+        }
+      } catch (e) {}
+    }
+
+    const claudeDir = path.join(homeDir, '.claude');
+    if (fs.existsSync(claudeDir)) {
+      memories.push({
+        id: `mem-${counter++}`,
+        title: 'Claude CLI & Agent Session History',
+        tool: 'Claude',
+        snippet: `Session logs & CLI transcripts stored at ~/.claude`,
+        size: formatBytes(getDirectorySize(claudeDir)),
+        sensitiveFlag: true,
+        path: claudeDir
+      });
+    }
+
+    const cursorDir = path.join(homeDir, '.cursor');
+    if (fs.existsSync(cursorDir)) {
+      memories.push({
+        id: `mem-${counter++}`,
+        title: 'Cursor AI Prompt History & Extension State',
+        tool: 'Cursor',
+        snippet: `Extension state & prompt log index stored at ~/.cursor`,
+        size: formatBytes(getDirectorySize(cursorDir)),
+        sensitiveFlag: false,
+        path: cursorDir
+      });
+    }
+
+    res.json({ memories });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// API 6: Kill Process
 app.post('/api/processes/kill', async (req, res) => {
   try {
     const { pid } = req.body;
+    if (!pid || typeof pid !== 'number') {
+      return res.status(400).json({ error: 'Valid PID required' });
+    }
     const success = await killProcess(pid);
     res.json({ success, pid });
-  } catch (e) {
-    res.status(500).json({ error: (e as Error).message });
-  }
-});
-
-// API 6: Safe Clean
-app.post('/api/clean', async (req, res) => {
-  try {
-    const { itemIds, targetPaths, createRestorePoint = true } = req.body;
-    const allItems = await scanAICaches();
-    const selectedItems = allItems.filter(i => itemIds.includes(i.id));
-
-    let snapshotId = null;
-    if (createRestorePoint && selectedItems.length > 0) {
-      const snapshot = await createSnapshot(selectedItems);
-      snapshotId = snapshot.snapshotId;
-    }
-
-    const result = await deleteItemsSafely(targetPaths);
-
-    res.json({
-      success: result.success,
-      snapshotId,
-      movedToTrash: result.movedToTrash,
-      errors: result.errors
-    });
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
   }
@@ -240,34 +315,54 @@ app.get('/api/snapshots', async (req, res) => {
   }
 });
 
-// API 8: Restore Snapshot
-app.post('/api/restore', async (req, res) => {
+// API 8: Restore Safety Snapshot
+app.post('/api/snapshots/restore', async (req, res) => {
   try {
-    const { snapshotId, customDestinationPath } = req.body;
-    const result = await restoreSnapshot(snapshotId, customDestinationPath);
+    const { snapshotId, customTargetDir } = req.body;
+    if (!snapshotId) {
+      return res.status(400).json({ error: 'snapshotId required' });
+    }
+    const restoredCount = await restoreSnapshot(snapshotId, customTargetDir);
+    res.json({ success: true, restoredCount });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// API 9: Export AI Project Vault (.zip)
+app.post('/api/export-vault', async (req, res) => {
+  try {
+    const { folderPath } = req.body;
+    if (!folderPath || !fs.existsSync(folderPath)) {
+      return res.status(400).json({ error: 'Valid folderPath is required' });
+    }
+    const result = await exportProjectVault(folderPath);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
   }
 });
 
-// API 9: Export Zero-Data-Loss Project Vault ZIP
-app.post('/api/export-vault', async (req, res) => {
+// API 10: Import AI Project Vault (.zip)
+app.post('/api/import-vault', async (req, res) => {
   try {
-    const { projectPath } = req.body;
-    const targetDir = projectPath || process.cwd();
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const zipName = `ai-vault_${path.basename(targetDir)}_${timestamp}.project-ai.zip`;
-    const outputPath = path.join(os.homedir(), 'Desktop', zipName);
-
-    const success = await exportProjectVault(targetDir, outputPath);
-    res.json({ success, zipPath: outputPath, zipName });
+    const { vaultZipPath, destinationFolder } = req.body;
+    if (!vaultZipPath || !fs.existsSync(vaultZipPath)) {
+      return res.status(400).json({ error: 'Valid vaultZipPath is required' });
+    }
+    const targetDir = destinationFolder || path.join(os.homedir(), 'Desktop', 'Restored_AI_Projects');
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    const zip = new AdmZip(vaultZipPath);
+    zip.extractAllTo(targetDir, true);
+    res.json({ success: true, extractedPath: targetDir, message: `Successfully imported AI project vault to ${targetDir}` });
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
   }
 });
 
-// API 10: Scan Installed & Residual AI Software
+// API 11: Scan Installed & Residual AI Software
 app.get('/api/software', async (req, res) => {
   try {
     const runningProcesses = await scanAIProcesses();
@@ -278,20 +373,25 @@ app.get('/api/software', async (req, res) => {
   }
 });
 
-// API 11: Software Uninstall & Safe Cache Purge (Always Creates Safety Snapshot + Windows Native Uninstaller)
+// API 12: Software Uninstall & Safe Cache Purge (Always Creates Safety Snapshot of target software caches)
 app.post('/api/purge-software', async (req, res) => {
   try {
-    const { softwareId, purgeMode, createRestorePoint } = req.body;
-    
-    // ALWAYS create safety restore point first before taking action
-    await createSnapshot([], `pre-purge-${softwareId || 'software'}-${Date.now()}`);
+    const { softwareId, purgeMode } = req.body;
+
+    const runningProcesses = await scanAIProcesses();
+    const softwareList = await detectInstalledAISoftware(runningProcesses);
+    const targetSoftware = softwareList.find(s => s.id === softwareId);
+
+    const itemsToSnapshot: AICacheItem[] = targetSoftware ? targetSoftware.detectedCaches : [];
+
+    // ALWAYS create safety restore point of actual software caches before taking action
+    await createSnapshot(itemsToSnapshot, `pre-purge-${softwareId || 'software'}-${Date.now()}`);
 
     const isWindows = os.platform() === 'win32';
     let message = `Safety Restore Point created successfully!`;
 
     if (purgeMode === 'FULL_UNINSTALL') {
       if (isWindows) {
-        // Launch Windows Native Add/Remove Programs Control Panel
         exec('start appwiz.cpl', (err) => {
           if (err) {
             exec('start ms-settings:appsfeatures');
@@ -311,7 +411,7 @@ app.post('/api/purge-software', async (req, res) => {
   }
 });
 
-// API 12: Automated GitHub Auto-Update Checker Engine
+// API 13: Automated GitHub Auto-Update Checker Engine with Semver Comparison
 app.get('/api/check-update', async (req, res) => {
   try {
     const currentVersion = 'v1.0.0';
@@ -333,11 +433,21 @@ app.get('/api/check-update', async (req, res) => {
 
     const latestRelease = await response.json();
     const latestVersion = latestRelease.tag_name || 'v1.0.0';
-    
-    // Compare versions (e.g. v1.0.1 vs v1.0.0)
-    const cleanLatest = latestVersion.replace(/^v/, '');
-    const cleanCurrent = currentVersion.replace(/^v/, '');
-    const isNewer = cleanLatest !== cleanCurrent;
+
+    function isVersionNewer(latest: string, current: string): boolean {
+      const parse = (v: string) => v.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+      const l = parse(latest);
+      const c = parse(current);
+      for (let i = 0; i < Math.max(l.length, c.length); i++) {
+        const lNum = l[i] || 0;
+        const cNum = c[i] || 0;
+        if (lNum > cNum) return true;
+        if (lNum < cNum) return false;
+      }
+      return false;
+    }
+
+    const isNewer = isVersionNewer(latestVersion, currentVersion);
 
     res.json({
       updateAvailable: isNewer,
@@ -361,7 +471,7 @@ app.get('/api/check-update', async (req, res) => {
   }
 });
 
-// API 13: Convert Portable App to Native Installed Windows Application
+// API 14: Convert Portable App to Native Installed Windows Application
 app.post('/api/install-native', async (req, res) => {
   try {
     const isWindows = os.platform() === 'win32';
@@ -370,7 +480,7 @@ app.post('/api/install-native', async (req, res) => {
     }
 
     const localSetupPath = path.join(process.cwd(), 'dist-electron', 'AI-Clutter-Cleaner-Setup-1.0.0.exe');
-    
+
     if (fs.existsSync(localSetupPath)) {
       exec(`start "" "${localSetupPath}"`);
       return res.json({ success: true, message: 'Launched Windows Native Setup Installer!' });
@@ -388,7 +498,6 @@ const server = app.listen(PORT, '127.0.0.1', () => {
   console.log(`AI-Hygiene Local Engine API running at http://127.0.0.1:${PORT}`);
 });
 
-
 server.on('error', (err: any) => {
   if (err.code === 'EADDRINUSE') {
     console.log(`[Backend Engine] Port ${PORT} is already in use by active local server.`);
@@ -396,6 +505,3 @@ server.on('error', (err: any) => {
     console.error('[Backend Engine Error]:', err);
   }
 });
-
-
-

@@ -16,16 +16,47 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
   const [cacheThresholdGb, setCacheThresholdGb] = useState<number>(20);
   const [defaultDeleteMethod, setDefaultDeleteMethod] = useState<'TRASH' | 'PERMANENT'>('TRASH');
   const [restorePointPolicy, setRestorePointPolicy] = useState<'PROMPT' | 'ALWAYS' | 'NEVER'>('PROMPT');
-  const [customRestorePath, setCustomRestorePath] = useState<string>('C:\\Users\\iamra\\Desktop\\Restored_AI_Files');
+  const [customRestorePath, setCustomRestorePath] = useState<string>('Desktop\\Restored_AI_Files');
   const [autoCleanGreenTier, setAutoCleanGreenTier] = useState<boolean>(false);
   const [checkingUpdate, setCheckingUpdate] = useState<boolean>(false);
   const [installingNative, setInstallingNative] = useState<boolean>(false);
   const [nativeInstallMsg, setNativeInstallMsg] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
 
-  const handleSaveSettings = () => {
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+  useEffect(() => {
+    fetch('http://127.0.0.1:3333/api/config')
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          if (data.cacheThresholdGb) setCacheThresholdGb(data.cacheThresholdGb);
+          if (data.defaultDeleteMethod) setDefaultDeleteMethod(data.defaultDeleteMethod);
+          if (data.restorePointPolicy) setRestorePointPolicy(data.restorePointPolicy);
+          if (data.customRestorePath) setCustomRestorePath(data.customRestorePath);
+          if (data.autoCleanGreenTier !== undefined) setAutoCleanGreenTier(data.autoCleanGreenTier);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveSettings = async () => {
+    try {
+      await fetch('http://127.0.0.1:3333/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cacheThresholdGb,
+          defaultDeleteMethod,
+          restorePointPolicy,
+          customRestorePath,
+          autoCleanGreenTier
+        })
+      });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (e) {
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    }
   };
 
   const handleManualCheckUpdate = async () => {

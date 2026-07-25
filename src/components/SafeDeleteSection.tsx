@@ -28,7 +28,7 @@ export const SafeDeleteSection: React.FC<SafeDeleteSectionProps> = ({ items, onC
       return;
     }
     try {
-      await fetch('http://localhost:3333/api/open-folder', {
+      await fetch('http://127.0.0.1:3333/api/open-folder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folderPath })
