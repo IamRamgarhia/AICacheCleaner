@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="1000" height="600" role="img" aria-label="AICacheCleaner dashboard mockup showing AI cache footprint across drives, hygiene score, and reclaimable space. Replace with a real screenshot.">
+  <rect width="1000" height="600" fill="#0b0f19"/>
+  <rect x="0" y="0" width="1000" height="600" fill="none" stroke="#1f2937" stroke-width="2"/>
+
+  <!-- Window top bar -->
+  <rect x="0" y="0" width="1000" height="44" fill="#131b2e"/>
+  <circle cx="22" cy="22" r="6" fill="#ef4444"/>
+  <circle cx="44" cy="22" r="6" fill="#fbbf24"/>
+  <circle cx="66" cy="22" r="6" fill="#10b981"/>
+  <text x="500" y="28" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#9ca3af">AICacheCleaner — Dashboard (mockup — replace with real screenshot)</text>
+
+  <!-- Sidebar -->
+  <rect x="0" y="44" width="180" height="556" fill="#0d1320"/>
+  <g font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#9ca3af">
+    <rect x="12" y="72" width="156" height="34" rx="6" fill="rgba(0,242,254,0.1)"/>
+    <text x="44" y="93" fill="#00f2fe" font-weight="700">Dashboard</text>
+    <text x="28" y="135">Safe Delete</text>
+    <text x="28" y="165">Drive Footprint</text>
+    <text x="28" y="195">AI Software</text>
+    <text x="28" y="225">Clawbots</text>
+    <text x="28" y="255">Restore Points</text>
+    <text x="28" y="285">Process Inspector</text>
+    <text x="28" y="315">Settings</text>
+  </g>
+
+  <!-- Metric cards -->
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <!-- Card 1: Total AI cache -->
+    <rect x="200" y="64" width="245" height="110" rx="12" fill="#131b2e" stroke="#1f2937"/>
+    <text x="216" y="90" font-size="11" fill="#9ca3af">TOTAL AI CACHE FOOTPRINT</text>
+    <text x="216" y="132" font-size="30" font-weight="800" fill="#ffffff">104.13 GB</text>
+    <text x="216" y="156" font-size="11" fill="#6b7280">Across C: D: E: drives</text>
+
+    <!-- Card 2: Reclaimable -->
+    <rect x="460" y="64" width="245" height="110" rx="12" fill="#131b2e" stroke="#1f2937"/>
+    <text x="476" y="90" font-size="11" fill="#9ca3af">SAFE TO RECLAIM (GREEN)</text>
+    <text x="476" y="132" font-size="30" font-weight="800" fill="#34d399">66.23 MB</text>
+    <text x="476" y="156" font-size="11" fill="#6b7280">100% safe caches</text>
+
+    <!-- Card 3: Hygiene score -->
+    <rect x="720" y="64" width="245" height="110" rx="12" fill="#131b2e" stroke="#1f2937"/>
+    <text x="736" y="90" font-size="11" fill="#9ca3af">HYGIENE SCORE</text>
+    <text x="736" y="132" font-size="30" font-weight="800" fill="#00f2fe">87 / 100</text>
+    <text x="736" y="156" font-size="11" fill="#6b7280">2 zombie processes</text>
+  </g>
+
+  <!-- Cache list -->
+  <text x="200" y="210" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="#ffffff">Detected AI Caches</text>
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <!-- Row 1 GREEN -->
+    <rect x="200" y="222" width="765" height="44" rx="8" fill="#0d1320" stroke="#1f2937"/>
+    <circle cx="222" cy="244" r="5" fill="#10b981"/>
+    <text x="236" y="248" font-size="12" fill="#ffffff">Cursor Chromium UI Cache_Data</text>
+    <text x="236" y="262" font-size="10" fill="#6b7280">C:\Users\...\AppData\Roaming\Cursor\Cache\Cache_Data</text>
+    <rect x="860" y="234" width="44" height="20" rx="4" fill="rgba(16,185,129,0.15)"/>
+    <text x="882" y="248" text-anchor="middle" font-size="9" font-weight="700" fill="#34d399">SAFE</text>
+    <text x="940" y="248" text-anchor="end" font-size="12" font-weight="700" fill="#34d399">5.88 MB</text>
+
+    <!-- Row 2 GREEN -->
+    <rect x="200" y="272" width="765" height="44" rx="8" fill="#0d1320" stroke="#1f2937"/>
+    <circle cx="222" cy="294" r="5" fill="#10b981"/>
+    <text x="236" y="298" font-size="12" fill="#ffffff">Claude Desktop Diagnostic Logs</text>
+    <text x="236" y="312" font-size="10" fill="#6b7280">C:\Users\...\AppData\Roaming\Claude\logs</text>
+    <rect x="860" y="284" width="44" height="20" rx="4" fill="rgba(16,185,129,0.15)"/>
+    <text x="882" y="298" text-anchor="middle" font-size="9" font-weight="700" fill="#34d399">SAFE</text>
+    <text x="940" y="298" text-anchor="end" font-size="12" font-weight="700" fill="#34d399">60.1 MB</text>
+
+    <!-- Row 3 YELLOW -->
+    <rect x="200" y="322" width="765" height="44" rx="8" fill="#0d1320" stroke="#1f2937"/>
+    <circle cx="222" cy="344" r="5" fill="#fbbf24"/>
+    <text x="236" y="348" font-size="12" fill="#ffffff">Antigravity &amp; Gemini AI Storage</text>
+    <text x="236" y="362" font-size="10" fill="#6b7280">~/.gemini — brain state, transcripts, skills</text>
+    <rect x="854" y="334" width="50" height="20" rx="4" fill="rgba(251,191,36,0.15)"/>
+    <text x="879" y="348" text-anchor="middle" font-size="9" font-weight="700" fill="#fbbf24">REVIEW</text>
+    <text x="940" y="348" text-anchor="end" font-size="12" font-weight="700" fill="#fbbf24">15.11 GB</text>
+
+    <!-- Row 4 YELLOW -->
+    <rect x="200" y="372" width="765" height="44" rx="8" fill="#0d1320" stroke="#1f2937"/>
+    <circle cx="222" cy="394" r="5" fill="#fbbf24"/>
+    <text x="236" y="398" font-size="12" fill="#ffffff">Ollama Local LLM Model Weights</text>
+    <text x="236" y="412" font-size="10" fill="#6b7280">~/.ollama/models — LLaMA, Qwen, DeepSeek</text>
+    <rect x="854" y="384" width="50" height="20" rx="4" fill="rgba(251,191,36,0.15)"/>
+    <text x="879" y="398" text-anchor="middle" font-size="9" font-weight="700" fill="#fbbf24">REVIEW</text>
+    <text x="940" y="398" text-anchor="end" font-size="12" font-weight="700" fill="#fbbf24">23.40 GB</text>
+  </g>
+
+  <!-- Footer CTA -->
+  <rect x="200" y="445" width="765" height="70" rx="12" fill="rgba(16,185,129,0.08)" stroke="#10b981" stroke-opacity="0.3"/>
+  <text x="216" y="473" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#34d399">🟢 100% Safe cleanup available</text>
+  <text x="216" y="494" font-family="Segoe UI, Arial, sans-serif" font-size="11" fill="#9ca3af">66.23 MB of temporary caches can be removed with zero data loss.</text>
+  <rect x="860" y="463" width="90" height="34" rx="8" fill="#10b981"/>
+  <text x="905" y="485" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="800" fill="#0b0f19">Clean Safe</text>
+
+  <text x="500" y="560" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11" fill="#4b5563" font-style="italic">Illustrative mockup — capture the real dashboard and overwrite screenshots/dashboard.svg</text>
+</svg>

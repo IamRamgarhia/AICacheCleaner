@@ -8,6 +8,33 @@
 [![Security: 100% On-Demand Offline](https://img.shields.io/badge/Security-100%25%20On--Demand%20Offline-success.svg)](#-100-on-demand-security-guarantee)
 [![Release: v1.0.0](https://img.shields.io/badge/Release-v1.0.0-brightgreen.svg)](https://github.com/IamRamgarhia/ai-cache-cleaner/releases)
 
+<p align="center">
+  <img src="screenshots/hero-banner.svg" alt="AICacheCleaner — Clean Claude, Cursor & Ollama Cache to Free Up Disk Space. 100% safe, FOSS, offline." width="100%" />
+</p>
+
+---
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td width="50%" align="center"><b>Dashboard — AI cache footprint across drives</b></td>
+    <td width="50%" align="center"><b>Safe Delete — 100% risk-free GREEN caches</b></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/dashboard.svg" alt="AICacheCleaner dashboard showing total AI cache footprint of 104 GB across C:, D: and E: drives, hygiene score 87, and detected caches for Cursor, Claude, Antigravity and Ollama sorted by GREEN/YELLOW safety tier." /></td>
+    <td><img src="screenshots/safe-delete.svg" alt="AICacheCleaner Safe Delete view listing 100% safe GREEN-tier caches including Cursor Cache_Data, Cursor CachedData, Claude Desktop logs and Claude GPU shader cache, each with a plain-English explanation of why deletion is safe." /></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><b>Before &amp; After — 1 click reclaims tens of GB</b></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="screenshots/freed-space.svg" alt="Before and after comparison: AICacheCleaner cleaned Claude cache, Cursor cache and unused Ollama weights to reclaim 47 GB of disk space, raising the hygiene score from 41 to 92 and clearing all zombie processes." /></td>
+  </tr>
+</table>
+
+> *Illustrative mockups — capture the real app and overwrite the files in [`screenshots/`](screenshots) to make them live.*
+
 ---
 
 ## 💡 What is AICacheCleaner?
@@ -83,6 +110,110 @@ Detects installed and residual scraping engines including **OpenDevin, Crawl4AI,
 
 ### 5. 🧟 RAM Zombie Process Inspector
 Identifies background AI sidecars, MCP language servers, and orphaned processes using **real `pidusage` CPU/RAM stats** (not estimates), with 1-click safe termination.
+
+---
+
+## ⚖️ AICacheCleaner vs CCleaner / BleachBit / Manual Cleanup
+
+Generic cleaners like **CCleaner** and **BleachBit** are great for browser and system junk — but they have **no idea that Claude Desktop, Cursor, Ollama, Antigravity, or HuggingFace even exist**. Their "AI cache" knowledge is zero, so they either skip these caches entirely or, worse, nuke user data because they can't tell `Claude\logs` apart from `Claude\sessionDB`.
+
+| Capability | AICacheCleaner | CCleaner | BleachBit | Manual (Explorer) |
+|---|:---:|:---:|:---:|:---:|
+| Knows Claude Desktop cache paths (`Cache`, `GPUCache`, `Code Cache`, `logs`) | ✅ | ❌ | ❌ | ❌ |
+| Knows Cursor cache paths (`Cache_Data`, `CachedData`) | ✅ | ❌ | ❌ | ❌ |
+| Detects Ollama / HuggingFace / PyTorch model weights | ✅ | ❌ | ❌ | ❌ |
+| Knows Antigravity / Gemini `.gemini` brain & transcripts | ✅ | ❌ | ❌ | ❌ |
+| Distinguishes 100%-safe caches from protected user data (chat DB, session keys) | ✅ | ⚠️ partial | ⚠️ partial | ❌ |
+| Automatic safety restore point before every clean | ✅ | ❌ | ❌ | ❌ |
+| Soft-deletes to Recycle Bin / Trash (recoverable) | ✅ | ⚠️ optional | ⚠️ optional | ✅ |
+| Detects AI zombie processes in RAM | ✅ | ❌ | ❌ | ❌ |
+| 100% offline, no telemetry | ✅ | ❌ | ✅ | ✅ |
+| Free & open source | ✅ MIT | ❌ | ✅ GPL | ✅ |
+
+> **The short version:** use CCleaner/BleachBit for browser junk, and AICacheCleaner for your AI tool clutter. They're complementary, not replacements.
+
+---
+
+## 📊 Real-World Impact — How Much Space Can You Reclaim?
+
+The numbers below are **illustrative examples** of what a typical AI-heavy developer's machine accumulates over a few months of daily use. Actual figures depend on your tools and usage.
+
+| What was cleaned | Tool | Space reclaimed | Why it grew so big |
+|---|---|---|---|
+| Claude Desktop `Cache` + `GPUCache` + `logs` | Claude | **18.4 GB** | Webview cache + silent `claude-code-vm` downloads |
+| Cursor `Cache_Data` + `CachedData` | Cursor | **5.2 GB** | Old V8 bytecodes accumulate without auto-cleanup |
+| Unused Ollama weights (LLaMA, Qwen) | Ollama | **23.4 GB** | Each pulled model is 4–7 GB, easy to forget |
+| Antigravity / Gemini brain state | Antigravity | **15.1 GB** | Transcript + skill artifacts cached locally |
+| HuggingFace + PyTorch checkpoints | HF / Torch | **9.8 GB** | Auto-downloaded weights, never removed |
+| **Total reclaimed in one pass** | — | **~47 GB** | — |
+
+### 👥 What users say
+
+> *"I had no idea Claude Desktop was quietly hoarding 13 GB of cache on my C: drive. AICacheCleaner found and cleared it in seconds — my drive went from red to healthy."* — AI engineer (illustrative)
+
+> *"CCleaner kept skipping my Cursor and Ollama folders because it didn't recognize them. This is the first tool that actually understands AI tool clutter."* — Full-stack dev (illustrative)
+
+> *"Finally freed up C: drive space without risking my chat history. The safety tiers mean I trust what it's deleting."* — Indie developer (illustrative)
+
+*(Quotes are representative of the typical use case, not from specific named users.)*
+
+---
+
+## 💻 Use Cases by Platform & Scenario
+
+AICacheCleaner is built for the specific cleanup jobs people search for, on both Windows and macOS.
+
+### 🪟 Windows
+
+- **Windows 11 cache cleaner for AI tools** — clears `%AppData%\Claude`, `%AppData%\Cursor`, `%LOCALAPPDATA%` caches
+- **Free up C: drive space** when it's full of Claude Desktop and Cursor caches
+- **Clean Ollama models on Windows** — review `~/.ollama/models` and remove unused LLaMA/Qwen/DeepSeek weights
+- **Fix Cursor lag** by clearing stale `CachedData` that bloats startup time
+- **Uninstall AI software cleanly** — launches native Windows `appwiz.cpl` after snapshotting
+
+### 🍏 macOS
+
+- **macOS Claude cache cleanup** — clears `~/Library/Caches/Claude` and `~/Library/Logs/Claude`
+- **Clean Cursor cache on Mac** — removes `~/Library/Application Support/Cursor` cache subfolders
+- **Free up Ollama disk space on macOS** — surface `~/.ollama/models` weights
+- **Reclaim Antigravity / Gemini storage** — inspect `~/.gemini` brain state and transcripts
+
+### 🎯 By scenario
+
+| If you're searching for… | AICacheCleaner is the disk cleanup tool that… |
+|---|---|
+|---|---|
+| *"My C: drive is suddenly full"* | Scan all drives, find the 20–60 GB of hidden AI caches |
+| *"Cursor is slow to start"* | Clear old `CachedData` V8 bytecodes |
+| *"Claude Desktop is sluggish"* | Clear `Cache`, `GPUCache`, and accumulated `logs` |
+| *"Ollama ate my storage"* | Review and remove unused downloaded model weights |
+| *"My RAM is full of zombie processes"* | Inspect and terminate orphaned AI sidecars |
+
+---
+
+## 🧠 How It Works — Safe Cleanup Pipeline
+
+Every clean follows the same auditable pipeline. A safety snapshot is recorded first, items are soft-deleted to the OS Recycle Bin / Trash, and nothing is ever permanently destroyed without a recovery path.
+
+```mermaid
+flowchart LR
+    A[🔍 Scan all drives\nfor AI caches] --> B[🏷️ Classify by safety\n🟢 GREEN / 🟡 YELLOW / 🔴 RED]
+    B --> C{User selects\nitems to clean}
+    C --> D[📸 Record safety snapshot\nmetadata + paths]
+    D --> E[🗑️ Soft-delete to\nRecycle Bin / Trash]
+    E --> F[✅ Done — disk freed]
+    C -.->|change of mind| G[↩️ Restore from\nRecycle Bin / Trash]
+    G --> D
+
+    style A fill:#00f2fe,color:#0b0f19
+    style B fill:#fbbf24,color:#0b0f19
+    style D fill:#10b981,color:#0b0f19
+    style E fill:#34d399,color:#0b0f19
+    style F fill:#10b981,color:#0b0f19
+    style G fill:#a855f7,color:#ffffff
+```
+
+> **Why soft-delete instead of permanent delete?** Every cleaned item goes to your operating system's Recycle Bin (Windows) or Trash (macOS). If you ever change your mind, restoration is one click — and the snapshot record tells you exactly what was cleaned and from where.
 
 ---
 

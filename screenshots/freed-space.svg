@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 480" width="1000" height="480" role="img" aria-label="Before and after: AICacheCleaner freed 47 GB of AI cache across Claude, Cursor, and Ollama. Replace with a real screenshot.">
+  <rect width="1000" height="480" fill="#0b0f19"/>
+  <rect x="0" y="0" width="1000" height="480" fill="none" stroke="#1f2937" stroke-width="2"/>
+
+  <!-- Title -->
+  <text x="500" y="44" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="800" fill="#ffffff">Before &amp; After: Real AI Cache Cleanup</text>
+
+  <!-- BEFORE panel -->
+  <g transform="translate(40,80)">
+    <rect x="0" y="0" width="440" height="340" rx="14" fill="#131b2e" stroke="#ef4444" stroke-opacity="0.4"/>
+    <text x="220" y="36" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="#f87171">BEFORE — Cluttered</text>
+
+    <!-- Donut: mostly full -->
+    <circle cx="120" cy="180" r="70" fill="none" stroke="#1f2937" stroke-width="20"/>
+    <circle cx="120" cy="180" r="70" fill="none" stroke="#ef4444" stroke-width="20" stroke-dasharray="385 440" transform="rotate(-90 120 180)"/>
+    <text x="120" y="176" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="800" fill="#ffffff">88%</text>
+    <text x="120" y="196" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="10" fill="#9ca3af">disk used</text>
+
+    <!-- Breakdown -->
+    <g font-family="Segoe UI, Arial, sans-serif" font-size="12">
+      <text x="230" y="120" fill="#9ca3af">Claude cache</text>
+      <text x="420" y="120" text-anchor="end" fill="#ffffff" font-weight="700">18.4 GB</text>
+      <text x="230" y="150" fill="#9ca3af">Cursor cache</text>
+      <text x="420" y="150" text-anchor="end" fill="#ffffff" font-weight="700">5.2 GB</text>
+      <text x="230" y="180" fill="#9ca3af">Ollama weights</text>
+      <text x="420" y="180" text-anchor="end" fill="#ffffff" font-weight="700">23.4 GB</text>
+      <text x="230" y="210" fill="#9ca3af">Antigravity</text>
+      <text x="420" y="210" text-anchor="end" fill="#ffffff" font-weight="700">15.1 GB</text>
+      <line x1="230" y1="225" x2="420" y2="225" stroke="#1f2937"/>
+      <text x="230" y="250" fill="#ef4444" font-weight="700">AI clutter total</text>
+      <text x="420" y="250" text-anchor="end" fill="#ef4444" font-weight="800">62.1 GB</text>
+      <text x="230" y="278" fill="#6b7280" font-size="11">Hygiene score: 41 / 100</text>
+      <text x="230" y="298" fill="#6b7280" font-size="11">4 zombie processes</text>
+    </g>
+  </g>
+
+  <!-- Arrow -->
+  <text x="500" y="260" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="40" fill="#34d399">→</text>
+  <text x="500" y="290" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700" fill="#34d399">1-click clean</text>
+
+  <!-- AFTER panel -->
+  <g transform="translate(520,80)">
+    <rect x="0" y="0" width="440" height="340" rx="14" fill="#131b2e" stroke="#10b981" stroke-opacity="0.5"/>
+    <text x="220" y="36" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="#34d399">AFTER — Freed 47 GB</text>
+
+    <!-- Donut: much emptier -->
+    <circle cx="120" cy="180" r="70" fill="none" stroke="#1f2937" stroke-width="20"/>
+    <circle cx="120" cy="180" r="70" fill="none" stroke="#10b981" stroke-width="20" stroke-dasharray="120 440" transform="rotate(-90 120 180)"/>
+    <text x="120" y="176" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="800" fill="#ffffff">27%</text>
+    <text x="120" y="196" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="10" fill="#9ca3af">disk used</text>
+
+    <!-- Breakdown -->
+    <g font-family="Segoe UI, Arial, sans-serif" font-size="12">
+      <text x="230" y="120" fill="#9ca3af">Claude cache</text>
+      <text x="420" y="120" text-anchor="end" fill="#34d399" font-weight="700">cleared ✓</text>
+      <text x="230" y="150" fill="#9ca3af">Cursor cache</text>
+      <text x="420" y="150" text-anchor="end" fill="#34d399" font-weight="700">cleared ✓</text>
+      <text x="230" y="180" fill="#9ca3af">Ollama (kept 2)</text>
+      <text x="420" y="180" text-anchor="end" fill="#ffffff" font-weight="700">8.1 GB</text>
+      <text x="230" y="210" fill="#9ca3af">Antigravity</text>
+      <text x="420" y="210" text-anchor="end" fill="#ffffff" font-weight="700">7.0 GB</text>
+      <line x1="230" y1="225" x2="420" y2="225" stroke="#1f2937"/>
+      <text x="230" y="250" fill="#34d399" font-weight="700">Reclaimed</text>
+      <text x="420" y="250" text-anchor="end" fill="#34d399" font-weight="800">47.0 GB</text>
+      <text x="230" y="278" fill="#6b7280" font-size="11">Hygiene score: 92 / 100</text>
+      <text x="230" y="298" fill="#6b7280" font-size="11">0 zombie processes</text>
+    </g>
+  </g>
+
+  <text x="500" y="455" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11" fill="#4b5563" font-style="italic">Illustrative example — figures shown are representative, not from a specific machine.</text>
+</svg>
