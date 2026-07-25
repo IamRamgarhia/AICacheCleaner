@@ -15,30 +15,24 @@ export const MemoryInspector: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [apiFailed, setApiFailed] = useState<boolean>(false);
 
   const fetchRealMemories = async () => {
     setLoading(true);
+    setApiFailed(false);
     try {
       const res = await fetch('http://127.0.0.1:3333/api/memories');
       if (res.ok) {
         const data = await res.json();
-        if (data.memories && data.memories.length > 0) {
-          setMemories(data.memories);
-          setLoading(false);
-          return;
-        }
+        setMemories(data.memories || []);
+      } else {
+        setApiFailed(true);
       }
     } catch (e) {
-      // Fallback below
+      // Backend unavailable — show an honest empty state instead of fabricated data.
+      setApiFailed(true);
+      setMemories([]);
     }
-
-    // Fallback if backend loading or empty
-    setMemories([
-      { id: '1', title: 'Antigravity Session Transcripts', tool: 'Antigravity', snippet: 'Brain state & conversation logs stored in ~/.gemini/antigravity/brain', size: '14.2 MB', sensitiveFlag: true },
-      { id: '2', title: 'MCP Context Memory Store', tool: 'MCP Memory', snippet: 'Stored user preferences and workspace path bindings in .mcp', size: '1.8 MB', sensitiveFlag: false },
-      { id: '3', title: 'Claude CLI Task History', tool: 'Claude', snippet: 'CLI session history and agent state in ~/.claude', size: '8.4 MB', sensitiveFlag: true },
-      { id: '4', title: 'Cursor AI Workspace Storage', tool: 'Cursor', snippet: 'Codebase embedding index and prompt log in ~/.cursor', size: '25.1 MB', sensitiveFlag: false }
-    ]);
     setLoading(false);
   };
 
@@ -89,6 +83,16 @@ export const MemoryInspector: React.FC = () => {
       {loading ? (
         <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
           Scanning local AI memory stores...
+        </div>
+      ) : apiFailed ? (
+        <div style={{ padding: '40px', textAlign: 'center', color: '#f87171' }}>
+          Couldn't reach the local scan engine at <code>http://127.0.0.1:3333</code>.
+          <br />Make sure AICacheCleaner is running, then click Refresh.
+        </div>
+      ) : memories.length === 0 ? (
+        <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+          No local AI memory stores found on this machine.
+          <br />Supported stores include <code>.gemini</code>, <code>.mcp</code>, <code>.claude</code>, and <code>.cursor</code>.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

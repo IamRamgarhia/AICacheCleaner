@@ -6,45 +6,34 @@ import { AICacheItem, SnapshotItem } from '../src/types';
 import { formatBytes } from './scanner';
 
 const snapshotDir = path.join(os.homedir(), '.ai-cache-cleaner', 'snapshots');
-const backupStorageDir = path.join(os.homedir(), '.ai-cache-cleaner', 'backups');
 
 export function ensureDirs() {
   if (!fs.existsSync(snapshotDir)) {
     fs.mkdirSync(snapshotDir, { recursive: true });
   }
-  if (!fs.existsSync(backupStorageDir)) {
-    fs.mkdirSync(backupStorageDir, { recursive: true });
-  }
 }
 
-export async function createSnapshot(items: AICacheItem[]): Promise<SnapshotItem> {
+export async function createSnapshot(items: AICacheItem[], note?: string): Promise<SnapshotItem> {
   ensureDirs();
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const snapshotId = `snapshot_${timestamp}`;
   const totalSizeBytes = items.reduce((acc, item) => acc + item.sizeBytes, 0);
 
-  // Backup files into local snapshot storage before soft-delete
-  const snapshotBackupPath = path.join(backupStorageDir, snapshotId);
-  fs.mkdirSync(snapshotBackupPath, { recursive: true });
-
-  for (const item of items) {
-    if (fs.existsSync(item.path)) {
-      try {
-        const dest = path.join(snapshotBackupPath, item.id);
-        fs.cpSync(item.path, dest, { recursive: true });
-      } catch (e) {
-        // Skip uncopyable files
-      }
-    }
-  }
-
+  // IMPORTANT: We do NOT physically copy files into backupStorageDir.
+  // deleteItemsSafely() below soft-deletes to the OS Recycle Bin / Trash, which is
+  // itself the recovery path. Copying would double disk usage (e.g. cleaning a 15 GB
+  // cache would immediately re-consume 15 GB), defeating the product's purpose.
+  // Instead we record a lightweight metadata manifest (path + size + tier) so a
+  // restore is a guided operation: the user restores from their Recycle Bin / Trash
+  // to the recorded original path, or to a custom destination once recovered.
   const snapshot: SnapshotItem = {
     snapshotId,
     timestamp: new Date().toLocaleString(),
     itemCount: items.length,
     totalSizeBytes,
     formattedSize: formatBytes(totalSizeBytes),
-    items
+    items,
+    note
   };
 
   const snapshotJsonPath = path.join(snapshotDir, `${snapshotId}.json`);
@@ -70,39 +59,40 @@ export async function listSnapshots(): Promise<SnapshotItem[]> {
   return snapshots.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 }
 
-export async function restoreSnapshot(snapshotId: string, customDestinationPath?: string): Promise<{ success: boolean; restoredPaths: string[]; error?: string }> {
+export async function restoreSnapshot(snapshotId: string, customDestinationPath?: string): Promise<{ success: boolean; restoredPaths: string[]; recoverableFromTrash: boolean; error?: string }> {
   ensureDirs();
   const snapshotJsonPath = path.join(snapshotDir, `${snapshotId}.json`);
-  const snapshotBackupPath = path.join(backupStorageDir, snapshotId);
 
   if (!fs.existsSync(snapshotJsonPath)) {
-    return { success: false, restoredPaths: [], error: 'Snapshot record not found' };
+    return { success: false, restoredPaths: [], recoverableFromTrash: false, error: 'Snapshot record not found' };
   }
 
   try {
     const snapshot: SnapshotItem = JSON.parse(fs.readFileSync(snapshotJsonPath, 'utf-8'));
+
+    // Items were soft-deleted to the OS Recycle Bin / Trash, not physically copied here.
+    // A "restore" therefore means: verify whether each original path already exists again
+    // (user may have already restored it from Trash), and report the paths to recover.
     const restoredPaths: string[] = [];
-
     for (const item of snapshot.items) {
-      const backupItemPath = path.join(snapshotBackupPath, item.id);
-      if (fs.existsSync(backupItemPath)) {
-        const targetPath = customDestinationPath
-          ? path.join(customDestinationPath, item.name.replace(/[^a-zA-Z0-9_-]/g, '_'))
-          : item.path;
-
-        const parentDir = path.dirname(targetPath);
-        if (!fs.existsSync(parentDir)) {
-          fs.mkdirSync(parentDir, { recursive: true });
-        }
-
-        fs.cpSync(backupItemPath, targetPath, { recursive: true });
+      const targetPath = customDestinationPath
+        ? path.join(customDestinationPath, item.name.replace(/[^a-zA-Z0-9_-]/g, '_'))
+        : item.path;
+      if (fs.existsSync(item.path) || (customDestinationPath && fs.existsSync(targetPath))) {
         restoredPaths.push(targetPath);
       }
     }
 
-    return { success: true, restoredPaths };
+    return {
+      success: true,
+      restoredPaths,
+      recoverableFromTrash: true,
+      error: restoredPaths.length === snapshot.items.length
+        ? undefined
+        : 'Items were soft-deleted to your Recycle Bin / Trash. Open the Recycle Bin / Trash to restore remaining items to their original locations.'
+    };
   } catch (e) {
-    return { success: false, restoredPaths: [], error: (e as Error).message };
+    return { success: false, restoredPaths: [], recoverableFromTrash: false, error: (e as Error).message };
   }
 }
 

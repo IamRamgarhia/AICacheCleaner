@@ -10,7 +10,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import net from 'net';
-import { exec, execFile } from 'child_process';
+import { spawn } from 'child_process';
 import AdmZip from 'adm-zip';
 
 const app = express();
@@ -392,11 +392,13 @@ app.post('/api/purge-software', async (req, res) => {
 
     if (purgeMode === 'FULL_UNINSTALL') {
       if (isWindows) {
-        exec('start appwiz.cpl', (err) => {
-          if (err) {
-            exec('start ms-settings:appsfeatures');
-          }
+        // Launch Windows native uninstaller. `start` is a cmd.exe builtin, so we
+        // spawn cmd with discrete args rather than interpolating into a shell string.
+        const child = spawn('cmd', ['/c', 'start', '', 'appwiz.cpl'], { shell: false, detached: true, stdio: 'ignore' });
+        child.on('error', () => {
+          spawn('cmd', ['/c', 'start', '', 'ms-settings:appsfeatures'], { shell: false, detached: true, stdio: 'ignore' }).unref();
         });
+        child.unref();
         message = `Safety Restore Point created! Launched Windows Native Control Panel (appwiz.cpl) to cleanly uninstall software.`;
       } else {
         message = `Safety Restore Point created! Opened native uninstaller.`;
@@ -482,11 +484,11 @@ app.post('/api/install-native', async (req, res) => {
     const localSetupPath = path.join(process.cwd(), 'dist-electron', 'AICacheCleaner-Setup-1.0.0.exe');
 
     if (fs.existsSync(localSetupPath)) {
-      exec(`start "" "${localSetupPath}"`);
+      spawn('cmd', ['/c', 'start', '', localSetupPath], { shell: false, detached: true, stdio: 'ignore' }).unref();
       return res.json({ success: true, message: 'Launched Windows Native Setup Installer!' });
     } else {
       const setupUrl = 'https://github.com/IamRamgarhia/ai-cache-cleaner/releases/download/v1.0.0/AICacheCleaner-Setup-1.0.0.exe';
-      exec(`start "" "${setupUrl}"`);
+      spawn('cmd', ['/c', 'start', '', setupUrl], { shell: false, detached: true, stdio: 'ignore' }).unref();
       return res.json({ success: true, message: 'Opened Windows Native Setup Installer download link!' });
     }
   } catch (e) {
