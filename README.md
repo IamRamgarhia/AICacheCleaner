@@ -1,12 +1,12 @@
 # AICacheCleaner — Clean Claude, Cursor & Ollama Cache to Free Up Disk Space
 
-> **100% Safe On-Demand AI Disk, Memory & Cache Cleaner for Windows & macOS.**
+> **100% Safe On-Demand AI Disk, Memory & Cache Cleaner for Windows.**
 > Free up disk space by safely clearing Claude Desktop cache, Cursor cache, Ollama model weights, and Antigravity / Gemini AI storage — with automatic safety restore points.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Platform: Windows & macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-blue.svg)](https://github.com/IamRamgarhia/ai-cache-cleaner)
+[![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue.svg)](https://github.com/IamRamgarhia/AICacheCleaner/releases)
 [![Security: 100% On-Demand Offline](https://img.shields.io/badge/Security-100%25%20On--Demand%20Offline-success.svg)](#-100-on-demand-security-guarantee)
-[![Release: v1.0.0](https://img.shields.io/badge/Release-v1.0.0-brightgreen.svg)](https://github.com/IamRamgarhia/ai-cache-cleaner/releases)
+[![Release: v1.0.0](https://img.shields.io/badge/Release-v1.0.0-brightgreen.svg)](https://github.com/IamRamgarhia/AICacheCleaner/releases)
 
 <p align="center">
   <img src="screenshots/hero-banner.svg" alt="AICacheCleaner — Clean Claude, Cursor & Ollama Cache to Free Up Disk Space. 100% safe, FOSS, offline." width="100%" />
@@ -82,15 +82,17 @@ AICacheCleaner detects and cleans caches for these tools. GREEN = 100% safe to d
 
 ## 📥 Download AICacheCleaner (v1.0.0)
 
-**No installation required for Portable versions — just download and double-click.**
+**Zero installation** — download the portable build and double-click to run.
 
-| OS | File | Download |
-| :--- | :--- | :--- |
-| 🪟 **Windows** | `AICacheCleaner-Portable-1.0.0.exe` | [⚡ Download Windows Portable](https://github.com/IamRamgarhia/ai-cache-cleaner/releases/download/v1.0.0/AICacheCleaner-Portable-1.0.0.exe) |
-| 🪟 **Windows** (installer) | `AICacheCleaner-Setup-1.0.0.exe` | [⚡ Download Windows Setup](https://github.com/IamRamgarhia/ai-cache-cleaner/releases/download/v1.0.0/AICacheCleaner-Setup-1.0.0.exe) |
-| 🍏 **macOS** | `AICacheCleaner-macOS-1.0.0.zip` | [⚡ Download macOS Package](https://github.com/IamRamgarhia/ai-cache-cleaner/releases/download/v1.0.0/AICacheCleaner-macOS-1.0.0.zip) |
+| OS | File | Size | Download |
+| :--- | :--- | :--- | :--- |
+| 🪟 **Windows 10/11** | `AICacheCleaner-Portable-1.0.0.exe` | ~71 MB | [⚡ Download Windows Portable](https://github.com/IamRamgarhia/AICacheCleaner/releases/download/v1.0.0/AICacheCleaner-Portable-1.0.0.exe) |
 
-> All releases: [github.com/IamRamgarhia/ai-cache-cleaner/releases](https://github.com/IamRamgarhia/ai-cache-cleaner/releases)
+**Prefer a normal installed program?** After launching the portable build, open **Settings → Install as Native Windows App** to register it with Start Menu + Control Panel (the installer is generated from inside the app — no separate download).
+
+> 🍏 **macOS:** coming in a future release. The v1.0.0 macOS artifact was an incomplete build and has been removed. Star ⭐ the repo to be notified when the macOS `.dmg` ships.
+
+> All releases: [github.com/IamRamgarhia/AICacheCleaner/releases](https://github.com/IamRamgarhia/AICacheCleaner/releases)
 
 ---
 
@@ -161,9 +163,9 @@ The numbers below are **illustrative examples** of what a typical AI-heavy devel
 
 ## 💻 Use Cases by Platform & Scenario
 
-AICacheCleaner is built for the specific cleanup jobs people search for, on both Windows and macOS.
+AICacheCleaner is built for the specific cleanup jobs people search for on Windows.
 
-### 🪟 Windows
+### 🪟 Windows 10 / 11
 
 - **Windows 11 cache cleaner for AI tools** — clears `%AppData%\Claude`, `%AppData%\Cursor`, `%LOCALAPPDATA%` caches
 - **Free up C: drive space** when it's full of Claude Desktop and Cursor caches
@@ -171,17 +173,9 @@ AICacheCleaner is built for the specific cleanup jobs people search for, on both
 - **Fix Cursor lag** by clearing stale `CachedData` that bloats startup time
 - **Uninstall AI software cleanly** — launches native Windows `appwiz.cpl` after snapshotting
 
-### 🍏 macOS
-
-- **macOS Claude cache cleanup** — clears `~/Library/Caches/Claude` and `~/Library/Logs/Claude`
-- **Clean Cursor cache on Mac** — removes `~/Library/Application Support/Cursor` cache subfolders
-- **Free up Ollama disk space on macOS** — surface `~/.ollama/models` weights
-- **Reclaim Antigravity / Gemini storage** — inspect `~/.gemini` brain state and transcripts
-
 ### 🎯 By scenario
 
 | If you're searching for… | AICacheCleaner is the disk cleanup tool that… |
-|---|---|
 |---|---|
 | *"My C: drive is suddenly full"* | Scan all drives, find the 20–60 GB of hidden AI caches |
 | *"Cursor is slow to start"* | Clear old `CachedData` V8 bytecodes |
@@ -251,8 +245,8 @@ Yes. It uses strict safety tiers: GREEN items (temporary webview graphics, V8 by
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/IamRamgarhia/ai-cache-cleaner.git
-cd ai-cache-cleaner
+git clone https://github.com/IamRamgarhia/AICacheCleaner.git
+cd AICacheCleaner
 
 # 2. Install dependencies
 npm install
@@ -260,9 +254,8 @@ npm install
 # 3. Start development (frontend + backend)
 npm run dev
 
-# 4. Build desktop executables
-npm run build:win-portable    # Windows portable .exe
-npm run build:mac-dmg         # macOS .dmg
+# 4. Build the Windows portable executable
+npm run build:win-portable    # produces dist-electron/AICacheCleaner-Portable-1.0.0.exe
 ```
 
 ---
