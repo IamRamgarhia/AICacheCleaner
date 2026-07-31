@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue.svg)](https://github.com/IamRamgarhia/AICacheCleaner/releases)
 [![Security: 100% On-Demand Offline](https://img.shields.io/badge/Security-100%25%20On--Demand%20Offline-success.svg)](#-100-on-demand-security-guarantee)
-[![Release: v1.0.0](https://img.shields.io/badge/Release-v1.0.0-brightgreen.svg)](https://github.com/IamRamgarhia/AICacheCleaner/releases)
+[![Release: v1.1.0](https://img.shields.io/badge/Release-v1.1.0-brightgreen.svg)](https://github.com/IamRamgarhia/AICacheCleaner/releases)
 
 <p align="center">
   <img src="screenshots/hero-banner.svg" alt="AICacheCleaner — Clean Claude, Cursor & Ollama Cache to Free Up Disk Space. 100% safe, FOSS, offline." width="100%" />
@@ -84,17 +84,19 @@ Beyond the fixed list above, AICacheCleaner **discovers** AI tool directories ac
 
 ---
 
-## 📥 Download AICacheCleaner (v1.0.0)
+## 📥 Download AICacheCleaner (v1.1.0)
 
 **Zero installation** — download the portable build and double-click to run.
 
 | OS | File | Size | Download |
 | :--- | :--- | :--- | :--- |
-| 🪟 **Windows 10/11** | `AICacheCleaner-Portable-1.0.0.exe` | ~71 MB | [⚡ Download Windows Portable](https://github.com/IamRamgarhia/AICacheCleaner/releases/download/v1.0.0/AICacheCleaner-Portable-1.0.0.exe) |
+| 🪟 **Windows 10/11** | `AICacheCleaner-Portable-1.1.0.exe` | ~75 MB | [⚡ Download Windows Portable](https://github.com/IamRamgarhia/AICacheCleaner/releases/download/v1.1.0/AICacheCleaner-Portable-1.1.0.exe) |
 
 **Prefer a normal installed program?** After launching the portable build, open **Settings → Install as Native Windows App** to register it with Start Menu + Control Panel (the installer is generated from inside the app — no separate download).
 
 > 🍏 **macOS:** coming in a future release. The v1.0.0 macOS artifact was an incomplete build and has been removed. Star ⭐ the repo to be notified when the macOS `.dmg` ships.
+
+> ⚠️ **On v1.0.0? Update now.** Cleaning did not work in that build — a bundling bug meant every delete silently failed. Fixed and verified in v1.1.0. See the [changelog](CHANGELOG.md).
 
 > All releases: [github.com/IamRamgarhia/AICacheCleaner/releases](https://github.com/IamRamgarhia/AICacheCleaner/releases)
 
@@ -110,13 +112,21 @@ Before anything is removed, AICacheCleaner writes a record of exactly what will 
 
 *Automatic restore is currently Windows-only; on other platforms the record is still written but recovery is manual.*
 
-### 3. 🖥️ Windows Native Uninstaller Integration
+### 3. 📦 Export AI Chat History Per Project — Move Work to a New PC
+Pick a project and get its source code **plus every AI conversation about it** in one `.zip`. Claude records a working directory in each session and Cursor stores a workspace folder, so **your chat history is matched to the right project automatically** — no hunting through `~/.claude` by hand. Archives stream to disk, so **there is no size limit**: a 2.4 GB project with 604 MB of chat history exports fine.
+
+Answers: *"how do I move my Claude chat history to a new computer"*, *"backup Cursor AI chat history"*, *"export AI conversations per project"*, *"migrate AI coding setup to new PC"*.
+
+### 4. 🧹 Clean npm, pip, Bun, Yarn & uv Caches
+Every AI tool, MCP server and coding agent pulls packages through these. They re-download on demand, so they are **100% safe to delete** — and usually the single largest reclaimable thing on a developer's disk. On the development machine this alone took reclaimable space from **327 MB to 3.44 GB**.
+
+### 5. 🖥️ Windows Native Uninstaller Integration
 Triggers the official Windows Add/Remove Programs panel (`appwiz.cpl` / `ms-settings:appsfeatures`) after creating a safety snapshot, for clean software uninstallation.
 
-### 4. 🤖 Autonomous Clawbots & Scraper Scanner
+### 6. 🤖 Autonomous Agents & Web Crawler Scanner
 Detects installed and residual scraping engines including **OpenDevin, Crawl4AI, Playwright, and Puppeteer** headless browser binaries.
 
-### 5. 🧟 RAM Zombie Process Inspector
+### 7. 🧟 RAM Zombie Process Inspector
 Identifies background AI sidecars, MCP language servers, and orphaned processes using **real `pidusage` CPU/RAM stats** (not estimates), with 1-click safe termination.
 
 ---
@@ -222,6 +232,18 @@ AICacheCleaner lists `~/.ollama/models` under YELLOW (each model is 4–20 GB). 
 **Is AICacheCleaner safe to use on my development machine?**
 Yes. It uses strict safety tiers: GREEN items (temporary webview graphics, V8 bytecodes, GPU shaders, logs) are 100% safe and auto-rebuild. YELLOW user data (chat databases, session keys) is never auto-deleted.
 
+**How do I move my AI chat history to a new computer?**
+Open **PC Migration → Export one project**, pick the project, and it packages the source plus every linked AI conversation into one `.zip`. Copy it across and unpack. There is no size limit.
+
+**Can I export just one project instead of everything?**
+Yes — that is the default. Exporting a whole tool means packaging every project you have ever touched (Antigravity alone can be 20 GB+). Per-project export gives you only what you need.
+
+**Is it safe to delete the npm or pip cache?**
+Yes. They are download caches — npm and pip refetch anything they need on the next install. Your installed `node_modules` and site-packages are untouched. These are often the biggest safe win on a developer's machine.
+
+**How do I undo a clean?**
+Open **Restore Points** and click **Restore these files**. Cleaned items go to the Windows Recycle Bin and the app moves them back automatically — you do not have to dig through the bin yourself.
+
 **Does AICacheCleaner run automatically in the background?**
 **No.** It operates on a strict **100% On-Demand** guarantee — no autostart entries, no background services, no daemons. It runs only when you open it.
 
@@ -252,7 +274,7 @@ npm install
 npm run dev
 
 # 4. Build the Windows portable executable
-npm run build:win-portable    # produces dist-electron/AICacheCleaner-Portable-1.0.0.exe
+npm run build:win-portable    # produces dist-electron/AICacheCleaner-Portable-1.1.0.exe
 ```
 
 ---
