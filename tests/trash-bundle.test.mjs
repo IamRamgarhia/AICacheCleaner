@@ -72,6 +72,43 @@ test('bundled trashBridge moves a real file to the Recycle Bin / Trash', async (
   }
 });
 
+test('the streaming archiver still works after bundling', () => {
+  // Same hazard class as the trash bug: `archiver` is ESM, and the export path
+  // must keep working once esbuild has inlined it into the CJS server bundle.
+  // A 3 GB export is what makes this feature useful, so a silent break here
+  // would be as damaging as the delete regression was.
+  const probeSrc = path.join(repoRoot, 'server', '__archive_probe.generated.ts');
+  const probeOut = path.join(repoRoot, 'dist', '__archive_probe.generated.cjs');
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aicc-arc-'));
+
+  fs.mkdirSync(path.dirname(probeOut), { recursive: true });
+  fs.writeFileSync(path.join(workDir, 'a.txt'), 'hello', 'utf-8');
+  fs.writeFileSync(
+    probeSrc,
+    `import { createStreamingArchive } from './streamingArchive';\n` +
+      `createStreamingArchive(process.argv[3], [{ source: process.argv[2], destination: 'x' }], []).then(\n` +
+      `  r => process.stdout.write('OK:' + r.archiveBytes),\n` +
+      `  e => process.stdout.write('FAIL:' + e.message)\n` +
+      `);\n`,
+    'utf-8'
+  );
+
+  const zipPath = path.join(workDir, 'out.zip');
+  try {
+    bundle(probeSrc, probeOut);
+    const stdout = execFileSync(process.execPath, [probeOut, workDir, zipPath], {
+      cwd: repoRoot,
+      encoding: 'utf-8'
+    });
+    assert.match(stdout, /^OK:\d+/, `bundled archive failed: ${stdout}`);
+    assert.ok(fs.existsSync(zipPath), 'archive should exist on disk');
+  } finally {
+    fs.rmSync(probeSrc, { force: true });
+    fs.rmSync(probeOut, { force: true });
+    fs.rmSync(workDir, { recursive: true, force: true });
+  }
+});
+
 test('trash stays out of the server bundle so import.meta.url survives', () => {
   const serverBundle = path.join(outDir, 'server-check.cjs');
   fs.mkdirSync(outDir, { recursive: true });

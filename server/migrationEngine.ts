@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import crypto from 'crypto';
 import AdmZip from 'adm-zip';
+import { createStreamingArchive, type ArchiveEntry } from './streamingArchive';
 
 export interface VaultFileManifest {
   relativePath: string;
@@ -21,16 +21,6 @@ export interface VaultManifest {
   includedSoftware: string[];
 }
 
-// Calculate SHA-256 hash of a file for integrity verification
-function calculateFileHash(filePath: string): string {
-  try {
-    const fileBuffer = fs.readFileSync(filePath);
-    return crypto.createHash('sha256').update(fileBuffer).digest('hex');
-  } catch (e) {
-    return 'unavailable';
-  }
-}
-
 function emptyManifest(): VaultManifest {
   return {
     version: '1.0.0',
@@ -42,34 +32,6 @@ function emptyManifest(): VaultManifest {
     description: '',
     includedSoftware: []
   };
-}
-
-// Cheap recursive size probe used only to pre-flight the export budget.
-function directorySizeSync(dirPath: string): number {
-  let total = 0;
-  const stack = [dirPath];
-  while (stack.length) {
-    const current = stack.pop()!;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const full = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(full);
-      } else if (entry.isFile()) {
-        try {
-          total += fs.statSync(full).size;
-        } catch {
-          // locked file — ignore
-        }
-      }
-    }
-  }
-  return total;
 }
 
 // Path Sanitizer to prevent directory traversal attacks (e.g. ../../).
@@ -127,10 +89,7 @@ export async function exportProjectVault(
   };
   try {
     const cleanProjectPath = sanitizePath(projectDirPath || process.cwd());
-    const zip = new AdmZip();
     const homeDir = os.homedir();
-    const fileManifests: VaultFileManifest[] = [];
-    let totalSizeBytes = 0;
 
     // Determine target output ZIP path
     const targetZipPath = outputZipPath && outputZipPath.trim().length > 0
@@ -143,41 +102,19 @@ export async function exportProjectVault(
       fs.mkdirSync(zipParentDir, { recursive: true });
     }
 
-    // 1. Add Source Code & Project Files (excluding node_modules and .git)
+    // 1. Project source, streamed rather than buffered.
+    //
+    // The previous version walked the tree, read EVERY file into memory to
+    // compute a SHA-256, and handed each one to adm-zip. Nothing ever verified
+    // those hashes on import, so the cost bought nothing and the whole archive
+    // still had to fit in RAM.
+    const streamedSourceEntries: ArchiveEntry[] = [];
     if (assets.sourceCode && fs.existsSync(cleanProjectPath)) {
-      const addFolderRecursive = (dir: string, zipPrefix: string) => {
-        try {
-          const files = fs.readdirSync(dir);
-          for (const file of files) {
-            if (file === 'node_modules' || file === '.git' || file === '.next' || file === 'dist' || file === 'build') continue;
-            
-            const fullPath = path.join(dir, file);
-            const relativeZipPath = path.join(zipPrefix, file).replace(/\\/g, '/');
-
-            try {
-              const stat = fs.statSync(fullPath);
-              if (stat.isDirectory()) {
-                addFolderRecursive(fullPath, relativeZipPath);
-              } else if (stat.isFile()) {
-                const hash = calculateFileHash(fullPath);
-                fileManifests.push({
-                  relativePath: relativeZipPath,
-                  sizeBytes: stat.size,
-                  sha256: hash
-                });
-                totalSizeBytes += stat.size;
-                zip.addLocalFile(fullPath, zipPrefix);
-              }
-            } catch (e) {
-              // Skip locked files gracefully
-            }
-          }
-        } catch (e) {
-          // Skip inaccessible folders
-        }
-      };
-
-      addFolderRecursive(cleanProjectPath, 'code');
+      streamedSourceEntries.push({
+        source: cleanProjectPath,
+        destination: 'code',
+        ignore: ['node_modules', '.git', '.next', 'dist', 'build', '.venv', '__pycache__', '.turbo', '.cache']
+      });
     }
 
     // 2. Attach selected AI memory & transcript directories.
@@ -248,11 +185,10 @@ export async function exportProjectVault(
       ? selectedSoftwareIds
       : Object.keys(softwarePathsMap);
 
-    // adm-zip builds the whole archive in memory. Enabling llmWeights can point
-    // at tens of GB of Ollama/HuggingFace models, which used to OOM the process
-    // with no warning. (Import already had a 5 GB guard; export had none.)
-    const MAX_EXPORT_BYTES = 8 * 1024 * 1024 * 1024; // 8 GB
-    let projectedBytes = totalSizeBytes;
+    // No size cap. The archive is streamed to disk (see streamingArchive.ts),
+    // so a 40 GB selection is bounded by free space, not by memory. The old
+    // 8 GB limit existed only because adm-zip buffered everything in RAM.
+    const streamedEntries: ArchiveEntry[] = [];
 
     for (const swId of targetSwKeys) {
       const config = softwarePathsMap[swId];
@@ -262,55 +198,47 @@ export async function exportProjectVault(
           // Honor the asset-category toggles from the UI.
           if (!assets[entry.category]) continue;
           if (fs.existsSync(entry.path)) {
-            const entryBytes = directorySizeSync(entry.path);
-            projectedBytes += entryBytes;
-            if (projectedBytes > MAX_EXPORT_BYTES) {
-              // Name the ACTUAL culprit. This used to always blame the model
-              // weights toggle even when that was switched off and something
-              // else — a 22 GB tool directory — was responsible.
-              const gb = (n: number) => (n / (1024 * 1024 * 1024)).toFixed(1);
-              return {
-                success: false,
-                manifest: emptyManifest(),
-                zipPath: targetZipPath,
-                error:
-                  `Too large to archive: ${gb(projectedBytes)} GB projected, limit is ` +
-                  `${Math.round(MAX_EXPORT_BYTES / (1024 * 1024 * 1024))} GB. ` +
-                  `"${swId.replace(/^sw-/, '')}" alone contributed ${gb(entryBytes)} GB (${entry.path}). ` +
-                  `Deselect it, or export a single project instead of whole tools.`
-              };
-            }
-            try {
-              zip.addLocalFolder(entry.path, config.zipFolder);
-              added = true;
-            } catch (e) {
-              // Ignore single file lock errors in subfolders
-            }
+            streamedEntries.push({ source: entry.path, destination: config.zipFolder });
+            added = true;
           }
         }
         if (added) includedSoftware.push(swId);
       }
     }
 
-    // 3. Generate SHA-256 Vault Manifest
+    // 3. Manifest + stream everything to disk
     const manifest: VaultManifest = {
-      version: '1.0.0',
+      version: '1.1.0',
       exportedAt: new Date().toISOString(),
       projectName: path.basename(cleanProjectPath),
-      totalFiles: fileManifests.length,
-      totalSizeBytes,
-      files: fileManifests,
-      description: 'Zero-Data-Loss Portable Project & AI Memory Vault (.zip)',
+      totalFiles: 0,
+      totalSizeBytes: 0,
+      files: [],
+      description: 'Portable AI memory & project archive (.zip), written as a stream — no size limit.',
       includedSoftware
     };
 
-    zip.addFile('vault_manifest.json', Buffer.from(JSON.stringify(manifest, null, 2), 'utf-8'));
-    zip.writeZip(targetZipPath);
+    const allEntries = [...streamedSourceEntries, ...streamedEntries];
+    if (allEntries.length === 0) {
+      return {
+        success: false,
+        manifest: emptyManifest(),
+        zipPath: targetZipPath,
+        error: 'Nothing selected to export.'
+      };
+    }
+
+    const streamResult = await createStreamingArchive(targetZipPath, allEntries, [
+      { name: 'vault_manifest.json', content: JSON.stringify(manifest, null, 2) }
+    ]);
+
+    manifest.totalFiles = streamResult.filesArchived;
+    manifest.totalSizeBytes = streamResult.archiveBytes;
 
     return {
       success: true,
       manifest,
-      zipPath: targetZipPath
+      zipPath: streamResult.zipPath
     };
   } catch (e) {
     return {
@@ -341,6 +269,7 @@ export async function exportSingleProject(
   includedTools: string[];
   sizeBytes: number;
   formattedSize: string;
+  warnings?: string[];
   error?: string;
 }> {
   const projectName = path.basename(projectPath) || 'project';
@@ -349,6 +278,8 @@ export async function exportSingleProject(
       ? sanitizePath(outputZipPath)
       : path.join(os.homedir(), 'Desktop', `${projectName.replace(/[^a-zA-Z0-9._-]+/g, '_')}_export_${Date.now()}.zip`);
 
+  let lastProgress = { filesProcessed: 0, bytesProcessed: 0 };
+
   const fail = (error: string) => ({
     success: false,
     zipPath: targetZipPath,
@@ -356,69 +287,39 @@ export async function exportSingleProject(
     includedTools: [] as string[],
     sizeBytes: 0,
     formattedSize: '0 B',
+    warnings: [] as string[],
     error
   });
 
   try {
-    // Budget check up front so a 20 GB project fails fast with a clear reason
-    // rather than exhausting memory inside adm-zip.
-    const MAX_PROJECT_EXPORT_BYTES = 4 * 1024 * 1024 * 1024;
-    const codeBytes = includeCode ? directorySizeSync(projectPath) : 0;
-    const aiBytes = sources.reduce((a, s) => a + s.sizeBytes, 0);
-    const projected = codeBytes + aiBytes;
-    const gb = (n: number) => (n / (1024 * 1024 * 1024)).toFixed(2);
-
-    if (projected > MAX_PROJECT_EXPORT_BYTES) {
-      return fail(
-        `Project is too large to archive in one pass: ${gb(projected)} GB ` +
-          `(code ${gb(codeBytes)} GB + AI history ${gb(aiBytes)} GB), limit ${gb(MAX_PROJECT_EXPORT_BYTES)} GB. ` +
-          `Untick "Include project source" to export just the conversations.`
-      );
-    }
-
-    const zip = new AdmZip();
+    // No size ceiling: the archive is streamed to disk, so peak memory is flat
+    // whether the project is 10 MB or 60 GB. The old adm-zip implementation
+    // buffered everything in memory, which is why arbitrary 4/8 GB caps existed.
+    const entries: ArchiveEntry[] = [];
     const includedTools: string[] = [];
-    let totalFiles = 0;
 
     if (includeCode) {
-      const addFolder = (dir: string, prefix: string) => {
-        let entries: string[];
-        try {
-          entries = fs.readdirSync(dir);
-        } catch {
-          return;
-        }
-        for (const name of entries) {
-          if (['node_modules', '.git', '.next', 'dist', 'build', '.venv', '__pycache__'].includes(name)) continue;
-          const full = path.join(dir, name);
-          const rel = path.join(prefix, name).replace(/\\/g, '/');
-          try {
-            const stat = fs.statSync(full);
-            if (stat.isDirectory()) addFolder(full, rel);
-            else if (stat.isFile()) {
-              zip.addLocalFile(full, prefix);
-              totalFiles++;
-            }
-          } catch {
-            /* locked file */
-          }
-        }
-      };
-      addFolder(projectPath, 'code');
+      entries.push({
+        source: projectPath,
+        destination: 'code',
+        // Reinstallable or regenerable — excluded so the archive stays useful
+        // rather than enormous. Everything else in the project is included.
+        ignore: ['node_modules', '.git', '.next', 'dist', 'build', '.venv', '__pycache__', '.turbo', '.cache']
+      });
     }
 
     for (const source of sources) {
       if (!fs.existsSync(source.path)) continue;
-      try {
-        zip.addLocalFolder(source.path, `ai_history/${source.tool.toLowerCase()}`);
-        includedTools.push(source.tool);
-      } catch {
-        /* skip unreadable source */
-      }
+      entries.push({ source: source.path, destination: `ai_history/${source.tool.toLowerCase()}` });
+      includedTools.push(source.tool);
+    }
+
+    if (entries.length === 0) {
+      return fail('Nothing to export: no project source selected and no linked AI history found.');
     }
 
     const manifest = {
-      version: '1.0.0',
+      version: '1.1.0',
       kind: 'single-project-export',
       exportedAt: new Date().toISOString(),
       projectPath,
@@ -427,28 +328,40 @@ export async function exportSingleProject(
       includedTools,
       sources: sources.map(s => ({ tool: s.tool, path: s.path, entries: s.entries ?? null })),
       note:
+        'code/ is the project source (node_modules, .git and build output excluded). ' +
         'ai_history/<tool>/ holds the conversations that tool recorded for this project. ' +
         'Antigravity and Codex are absent by design: their session data records no workspace path, ' +
         'so it cannot be attributed to a single project.'
     };
-    zip.addFile('project_manifest.json', Buffer.from(JSON.stringify(manifest, null, 2), 'utf-8'));
 
-    const parent = path.dirname(targetZipPath);
-    if (!fs.existsSync(parent)) fs.mkdirSync(parent, { recursive: true });
-    zip.writeZip(targetZipPath);
+    const result = await createStreamingArchive(
+      targetZipPath,
+      entries,
+      [{ name: 'project_manifest.json', content: JSON.stringify(manifest, null, 2) }],
+      p => {
+        lastProgress = p;
+      }
+    );
 
-    const written = fs.existsSync(targetZipPath) ? fs.statSync(targetZipPath).size : 0;
     return {
       success: true,
-      zipPath: targetZipPath,
-      totalFiles,
+      zipPath: result.zipPath,
+      totalFiles: result.filesArchived || lastProgress.filesProcessed,
       includedTools,
-      sizeBytes: written,
-      formattedSize: `${(written / (1024 * 1024)).toFixed(1)} MB`
+      sizeBytes: result.archiveBytes,
+      formattedSize: formatSize(result.archiveBytes),
+      warnings: result.warnings.slice(0, 5)
     };
   } catch (e) {
     return fail((e as Error).message);
   }
+}
+
+function formatSize(bytes: number): string {
+  if (!bytes || bytes < 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(i >= 3 ? 2 : 1))} ${units[i]}`;
 }
 
 export async function importProjectVault(zipPath: string, targetExtractPath?: string): Promise<{ success: boolean; totalFilesExtracted: number; message?: string; error?: string }> {
