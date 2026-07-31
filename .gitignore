@@ -28,3 +28,6 @@ Thumbs.db
 
 # AI coding-tool session artifacts
 .zcode/
+
+# Local preview/launch config
+.claude/
