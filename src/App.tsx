@@ -334,7 +334,7 @@ export const App: React.FC = () => {
             <div style={{ fontFamily: 'var(--ins-font-label)', fontSize: '0.9375rem', fontWeight: 600, letterSpacing: '-0.01em' }}>
               AICacheCleaner
             </div>
-            <div className="ins-data" style={{ fontSize: '0.6875rem', color: 'var(--ins-mist-500)' }}>v1.0.0</div>
+            <div className="ins-data" style={{ fontSize: '0.6875rem', color: 'var(--ins-mist-500)' }}>v1.1.0</div>
           </div>
         </div>
 

@@ -20,7 +20,7 @@ const PORT = 3333;
 
 // Single source of truth for identity strings that were previously duplicated
 // (and drifted) across endpoints.
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.1.0';
 const GITHUB_REPO = 'IamRamgarhia/AICacheCleaner';
 const RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases/latest`;
 

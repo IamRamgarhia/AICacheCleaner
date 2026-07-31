@@ -1,8 +1,8 @@
 {
   "name": "ai-cache-cleaner",
   "private": true,
-  "version": "1.0.0",
-  "description": "AICacheCleaner — 100% Safe On-Demand AI Disk, Memory & Cache Optimizer",
+  "version": "1.1.0",
+  "description": "AICacheCleaner \u2014 100% Safe On-Demand AI Disk, Memory & Cache Optimizer",
   "author": "Dice Codes (https://dicecodes.com/)",
   "type": "module",
   "main": "electron/main.cjs",
