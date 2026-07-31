@@ -794,7 +794,13 @@ app.get('/api/projects', async (_req, res) => {
       totalAiFormatted: formatBytes(p.totalAiBytes),
       sources: p.sources.map(s => ({ ...s, formattedSize: formatBytes(s.sizeBytes) }))
     }));
-    res.json({ projects, unlinkable: UNLINKABLE_TOOLS });
+    // Where an export lands by default, so the UI can show the destination
+    // BEFORE the user commits rather than only revealing it afterwards.
+    res.json({
+      projects,
+      unlinkable: UNLINKABLE_TOOLS,
+      defaultExportDir: path.join(os.homedir(), 'Desktop')
+    });
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
   }
@@ -823,7 +829,8 @@ app.post('/api/project-sources', async (req, res) => {
       projectFormatted: formatBytes(projectBytes),
       sources,
       totalAiBytes: sources.reduce((a, s) => a + s.sizeBytes, 0),
-      unlinkable: UNLINKABLE_TOOLS
+      unlinkable: UNLINKABLE_TOOLS,
+      defaultExportDir: path.join(os.homedir(), 'Desktop')
     });
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });

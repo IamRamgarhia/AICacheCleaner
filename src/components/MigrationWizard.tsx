@@ -91,9 +91,23 @@ export const MigrationWizard: React.FC<MigrationWizardProps> = ({ detectedSoftwa
   const [includeCode, setIncludeCode] = useState<boolean>(true);
   const [exportingProject, setExportingProject] = useState<boolean>(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
+  const [defaultExportDir, setDefaultExportDir] = useState<string>('');
+  // Destination is shown BEFORE exporting. Previously the archive silently
+  // landed on the Desktop and the path only appeared in the result message.
+  const [projectZipDest, setProjectZipDest] = useState<string>('');
+  const [destTouched, setDestTouched] = useState<boolean>(false);
   const [projectResult, setProjectResult] = useState<{ ok: boolean; text: string; zipPath?: string } | null>(null);
 
   const activeProject = projects.find(p => p.projectPath === selectedProject) || null;
+
+  // Keep the destination in step with the selected project until the user
+  // edits it themselves, then leave their value alone.
+  useEffect(() => {
+    if (destTouched || !defaultExportDir || !selectedProject) return;
+    const leaf = selectedProject.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'project';
+    const safe = leaf.replace(/[^a-zA-Z0-9._-]+/g, '_');
+    setProjectZipDest(`${defaultExportDir}\\${safe}_export.zip`);
+  }, [selectedProject, defaultExportDir, destTouched]);
 
   const fetchProjects = async () => {
     setLoadingProjects(true);
@@ -103,6 +117,7 @@ export const MigrationWizard: React.FC<MigrationWizardProps> = ({ detectedSoftwa
         const data = await res.json();
         setProjects(data.projects || []);
         setUnlinkable(data.unlinkable || []);
+        if (data.defaultExportDir) setDefaultExportDir(data.defaultExportDir);
         if (!selectedProject && data.projects?.length) setSelectedProject(data.projects[0].projectPath);
       }
     } catch (e) {
@@ -139,13 +154,13 @@ export const MigrationWizard: React.FC<MigrationWizardProps> = ({ detectedSoftwa
       const res = await fetch('http://127.0.0.1:3333/api/export-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectPath: selectedProject, includeCode })
+        body: JSON.stringify({ projectPath: selectedProject, includeCode, outputZipPath: projectZipDest.trim() || undefined })
       });
       const data = await res.json();
       if (data.success) {
         setProjectResult({
           ok: true,
-          text: `Packaged ${data.totalFiles} file(s)${data.includedTools.length ? ` plus history from ${data.includedTools.join(', ')}` : ''} — ${data.formattedSize}.`,
+          text: `${data.formattedSize} saved to ${data.zipPath}${data.includedTools.length ? ` — includes ${data.includedTools.join(' + ')} history` : ''}`,
           zipPath: data.zipPath
         });
       } else {
@@ -388,6 +403,44 @@ export const MigrationWizard: React.FC<MigrationWizardProps> = ({ detectedSoftwa
               <input type="checkbox" checked={includeCode} onChange={e => setIncludeCode(e.target.checked)} />
               Include project source
             </label>
+
+            <div style={{ marginTop: 'var(--ins-space-3)' }}>
+              <label className="ins-field-label" htmlFor="projdest">
+                Save archive to
+              </label>
+              <input
+                id="projdest"
+                className="ins-input ins-data"
+                style={{ fontSize: '0.75rem' }}
+                type="text"
+                value={projectZipDest}
+                placeholder={defaultExportDir ? `${defaultExportDir}\\project_export.zip` : 'Choose a .zip path'}
+                onChange={e => {
+                  setDestTouched(true);
+                  setProjectZipDest(e.target.value);
+                }}
+              />
+              <div style={{ display: 'flex', gap: 'var(--ins-space-2)', marginTop: '5px', alignItems: 'center' }}>
+                {destTouched && (
+                  <button
+                    className="ins-btn ins-btn--quiet"
+                    style={{ fontSize: '0.72rem' }}
+                    onClick={() => setDestTouched(false)}
+                  >
+                    Reset to default
+                  </button>
+                )}
+                {defaultExportDir && (
+                  <button
+                    className="ins-btn ins-btn--quiet"
+                    style={{ fontSize: '0.72rem' }}
+                    onClick={() => openFolder(defaultExportDir)}
+                  >
+                    <FolderOpen size={12} /> Open folder
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

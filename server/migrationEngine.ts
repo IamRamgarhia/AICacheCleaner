@@ -277,10 +277,23 @@ export async function exportSingleProject(
   error?: string;
 }> {
   const projectName = path.basename(projectPath) || 'project';
-  const targetZipPath =
-    outputZipPath && outputZipPath.trim().length > 0
-      ? sanitizePath(outputZipPath)
-      : path.join(os.homedir(), 'Desktop', `${projectName.replace(/[^a-zA-Z0-9._-]+/g, '_')}_export_${Date.now()}.zip`);
+  const safeName = projectName.replace(/[^a-zA-Z0-9._-]+/g, '_');
+
+  // Accept either a full .zip path or just a folder. Typing a directory used to
+  // produce an extension-less file that Windows could not open.
+  const targetZipPath = (() => {
+    const raw = outputZipPath?.trim();
+    if (!raw) {
+      return path.join(os.homedir(), 'Desktop', `${safeName}_export_${Date.now()}.zip`);
+    }
+    const clean = sanitizePath(raw);
+    const looksLikeDir =
+      clean.endsWith(path.sep) ||
+      clean.endsWith('/') ||
+      (fs.existsSync(clean) && fs.statSync(clean).isDirectory()) ||
+      path.extname(clean).toLowerCase() !== '.zip';
+    return looksLikeDir ? path.join(clean, `${safeName}_export_${Date.now()}.zip`) : clean;
+  })();
 
   let lastProgress = { filesProcessed: 0, bytesProcessed: 0 };
 
