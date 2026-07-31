@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import AdmZip from 'adm-zip';
 import { createStreamingArchive, type ArchiveEntry } from './streamingArchive';
+import { updateExport } from './exportProgress';
 
 export interface VaultFileManifest {
   relativePath: string;
@@ -228,9 +229,12 @@ export async function exportProjectVault(
       };
     }
 
-    const streamResult = await createStreamingArchive(targetZipPath, allEntries, [
-      { name: 'vault_manifest.json', content: JSON.stringify(manifest, null, 2) }
-    ]);
+    const streamResult = await createStreamingArchive(
+      targetZipPath,
+      allEntries,
+      [{ name: 'vault_manifest.json', content: JSON.stringify(manifest, null, 2) }],
+      p => updateExport(p.filesProcessed, p.bytesProcessed, p.filesTotal, p.bytesTotal)
+    );
 
     manifest.totalFiles = streamResult.filesArchived;
     manifest.totalSizeBytes = streamResult.archiveBytes;
@@ -340,6 +344,7 @@ export async function exportSingleProject(
       [{ name: 'project_manifest.json', content: JSON.stringify(manifest, null, 2) }],
       p => {
         lastProgress = p;
+        updateExport(p.filesProcessed, p.bytesProcessed, p.filesTotal, p.bytesTotal);
       }
     );
 

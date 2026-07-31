@@ -518,3 +518,34 @@
    buttons line up across the row instead of floating at ragged heights. */
 .ins-scope .ins-grid--2col > .ins-card,
 .ins-scope .ins-grid--pair > .ins-card { height: 100%; }
+
+/* Determinate progress bar. Long operations (a multi-GB archive takes tens of
+   seconds) previously showed only a static "Packaging…" label, which is
+   indistinguishable from a hang. */
+.ins-scope .ins-progress {
+  height: 6px;
+  width: 100%;
+  background: var(--ins-graphite-850);
+  border: 1px solid var(--ins-graphite-700);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.ins-scope .ins-progress__fill {
+  height: 100%;
+  background: var(--ins-safe);
+  border-radius: 2px;
+  transition: width 0.25s ease;
+}
+
+/* Indeterminate variant for when no total is known. */
+.ins-scope .ins-progress__fill--pulse {
+  width: 35% !important;
+  animation: aicc-indeterminate 1.4s ease-in-out infinite;
+}
+@keyframes aicc-indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(320%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-scope .ins-progress__fill--pulse { animation-duration: 3s; }
+}

@@ -6,6 +6,7 @@ import { scanAIProcesses, killProcess } from './processInspector';
 import { createSnapshot, listSnapshots, restoreSnapshot, deleteItemsSafely } from './snapshotManager';
 import { exportProjectVault, importProjectVault, exportSingleProject } from './migrationEngine';
 import { discoverProjects, findSourcesForProject, UNLINKABLE_TOOLS } from './projectLinker';
+import { beginExport, finishExport, getExportProgress } from './exportProgress';
 import { detectInstalledAISoftware } from './softwareDetector';
 import { convertTranscripts, listAvailableTranscriptApps } from './transcriptConverter';
 import type { SystemMetrics, AICacheItem, AISoftwareAppItem } from '../src/types';
@@ -844,16 +845,31 @@ app.post('/api/export-project', async (req, res) => {
       return res.status(400).json({ error: `Folder not found: ${resolved}` });
     }
 
-    const result = await exportSingleProject(
-      resolved,
-      findSourcesForProject(resolved),
-      outputZipPath,
-      includeCode !== false
-    );
-    res.json(result);
+    const sources = findSourcesForProject(resolved);
+
+    // Estimate the total up front so the progress bar has a denominator.
+    const codeBytes = includeCode !== false ? await getDirectorySize(resolved) : 0;
+    const totalBytes = codeBytes + sources.reduce((a, s) => a + s.sizeBytes, 0);
+    beginExport(`Archiving ${path.basename(resolved)}`, totalBytes);
+
+    try {
+      const result = await exportSingleProject(resolved, sources, outputZipPath, includeCode !== false);
+      finishExport(result.success ? undefined : result.error);
+      res.json(result);
+    } catch (e) {
+      finishExport((e as Error).message);
+      throw e;
+    }
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
   }
+});
+
+// API 14a-pre4: Live progress for the running export. Archiving multi-GB
+// projects takes tens of seconds; without this the UI could only show a static
+// "Packaging…" label with no sign of movement.
+app.get('/api/export-progress', (_req, res) => {
+  res.json(getExportProgress());
 });
 
 // API 14b-pre: Which apps can actually take part in a transcript conversion on

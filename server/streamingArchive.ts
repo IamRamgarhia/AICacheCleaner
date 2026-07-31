@@ -33,6 +33,9 @@ export interface ArchiveEntry {
 export interface ArchiveProgress {
   filesProcessed: number;
   bytesProcessed: number;
+  /** archiver's own running totals for what it has actually queued. */
+  filesTotal: number;
+  bytesTotal: number;
 }
 
 export interface ArchiveResult {
@@ -89,9 +92,15 @@ export function createStreamingArchive(
 
     if (onProgress) {
       archive.on('progress', (data: any) => {
+        // Report archiver's OWN totals rather than a caller-side estimate of
+        // the source tree. The caller cannot cheaply account for the ignore
+        // list (node_modules, .git, build output), so its denominator was far
+        // too large and the bar finished at ~21% on a completed export.
         onProgress({
           filesProcessed: data.entries.processed,
-          bytesProcessed: data.fs.processedBytes
+          bytesProcessed: data.fs.processedBytes,
+          filesTotal: data.entries.total,
+          bytesTotal: data.fs.totalBytes
         });
       });
     }

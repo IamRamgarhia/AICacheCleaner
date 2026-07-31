@@ -7,6 +7,23 @@ interface MigrationWizardProps {
 }
 
 /** An app the backend can read transcripts from / write transcripts for. */
+/** Live progress reported by the server while an archive is being written. */
+interface ExportProgress {
+  active: boolean;
+  label: string;
+  filesProcessed: number;
+  bytesProcessed: number;
+  totalBytes: number;
+  percent: number;
+  elapsedMs: number;
+}
+
+function formatMB(bytes: number): string {
+  if (!bytes) return '0 MB';
+  const gb = bytes / 1024 ** 3;
+  return gb >= 1 ? `${gb.toFixed(2)} GB` : `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+}
+
 /** A project with AI conversation history attached to it. */
 interface ProjectLink {
   projectPath: string;
@@ -73,6 +90,7 @@ export const MigrationWizard: React.FC<MigrationWizardProps> = ({ detectedSoftwa
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [includeCode, setIncludeCode] = useState<boolean>(true);
   const [exportingProject, setExportingProject] = useState<boolean>(false);
+  const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [projectResult, setProjectResult] = useState<{ ok: boolean; text: string; zipPath?: string } | null>(null);
 
   const activeProject = projects.find(p => p.projectPath === selectedProject) || null;
@@ -94,9 +112,29 @@ export const MigrationWizard: React.FC<MigrationWizardProps> = ({ detectedSoftwa
     }
   };
 
+  // Poll the server while an archive is being written so the user can see it
+  // moving. A multi-GB export takes tens of seconds and a static label is
+  // indistinguishable from a hang.
+  const pollProgress = () => {
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch('http://127.0.0.1:3333/api/export-progress');
+        if (!res.ok) return;
+        const p: ExportProgress = await res.json();
+        setProgress(p);
+        if (!p.active) clearInterval(timer);
+      } catch {
+        clearInterval(timer);
+      }
+    }, 400);
+    return timer;
+  };
+
   const handleExportProject = async () => {
     setExportingProject(true);
     setProjectResult(null);
+    setProgress(null);
+    const timer = pollProgress();
     try {
       const res = await fetch('http://127.0.0.1:3333/api/export-project', {
         method: 'POST',
@@ -116,7 +154,9 @@ export const MigrationWizard: React.FC<MigrationWizardProps> = ({ detectedSoftwa
     } catch (e) {
       setProjectResult({ ok: false, text: `Export failed: ${(e as Error).message}` });
     } finally {
+      clearInterval(timer);
       setExportingProject(false);
+      setProgress(null);
     }
   };
 
@@ -357,7 +397,12 @@ export const MigrationWizard: React.FC<MigrationWizardProps> = ({ detectedSoftwa
             disabled={!selectedProject || exportingProject}
             onClick={handleExportProject}
           >
-            <Download size={14} /> {exportingProject ? 'Packaging…' : 'Export this project'}
+            <Download size={14} />
+            {exportingProject
+              ? progress && progress.filesProcessed > 0
+                ? `Archiving ${progress.filesProcessed.toLocaleString()} files`
+                : 'Starting…'
+              : 'Export this project'}
           </button>
           {projectResult && (
             <div className={`ins-note ${projectResult.ok ? 'ins-note--ok' : 'ins-note--error'}`} style={{ flex: 1, minWidth: '280px' }}>
@@ -371,6 +416,29 @@ export const MigrationWizard: React.FC<MigrationWizardProps> = ({ detectedSoftwa
             </div>
           )}
         </div>
+
+        {exportingProject && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {/* Indeterminate by design. archiver enumerates entries lazily, so
+                its running total keeps growing and any percentage derived from
+                it visibly jumps backwards (99% then 43% then 99%). Live
+                counters below convey real movement without inventing a number
+                that isn't trustworthy. */}
+            <div className="ins-progress">
+              <div className="ins-progress__fill ins-progress__fill--pulse" />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span className="ins-meta ins-data">
+                {progress && progress.filesProcessed > 0
+                  ? `${progress.filesProcessed.toLocaleString()} files · ${formatMB(progress.bytesProcessed)} read`
+                  : 'Scanning files…'}
+              </span>
+              <span className="ins-meta ins-data">
+                {progress ? `${Math.round(progress.elapsedMs / 1000)}s` : ''}
+              </span>
+            </div>
+          </div>
+        )}
 
         {unlinkable.length > 0 && (
           <div className="ins-meta">
