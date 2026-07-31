@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Eye, ShieldCheck, FileText, Lock, RefreshCw } from 'lucide-react';
+import { Search, RefreshCw, Lock } from 'lucide-react';
 
 interface MemoryItem {
   id: string;
@@ -15,22 +15,21 @@ export const MemoryInspector: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [apiFailed, setApiFailed] = useState<boolean>(false);
+  const [failed, setFailed] = useState<boolean>(false);
 
   const fetchRealMemories = async () => {
     setLoading(true);
-    setApiFailed(false);
+    setFailed(false);
     try {
       const res = await fetch('http://127.0.0.1:3333/api/memories');
       if (res.ok) {
         const data = await res.json();
         setMemories(data.memories || []);
       } else {
-        setApiFailed(true);
+        setFailed(true);
       }
     } catch (e) {
-      // Backend unavailable — show an honest empty state instead of fabricated data.
-      setApiFailed(true);
+      setFailed(true);
       setMemories([]);
     }
     setLoading(false);
@@ -40,92 +39,92 @@ export const MemoryInspector: React.FC = () => {
     fetchRealMemories();
   }, []);
 
-  const filtered = memories.filter(m => 
-    m.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    m.snippet.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    m.tool.toLowerCase().includes(searchTerm.toLowerCase())
+  const q = searchTerm.toLowerCase();
+  const filtered = memories.filter(
+    m =>
+      m.title.toLowerCase().includes(q) ||
+      m.snippet.toLowerCase().includes(q) ||
+      m.tool.toLowerCase().includes(q)
   );
 
   return (
-    <div className="glass-card" style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+    <div className="ins-page">
+      <header className="ins-page-head">
         <div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Eye size={20} color="#00f2fe" /> Privacy & AI Memory Inspector
-          </h2>
-          <p style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '4px' }}>
-            Inspect real local vector DBs, MCP memory stores, and AI transcripts stored on disk
+          <h1 className="ins-h1">Stored transcripts</h1>
+          <p className="ins-sub">
+            Where your AI tools keep conversation history and memory on this disk. Nothing here is read or
+            sent anywhere — this view lists locations and sizes so you can decide what to keep.
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button
-            onClick={fetchRealMemories}
-            className="btn-secondary"
-            style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-          >
-            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
-          </button>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255, 255, 255, 0.05)', padding: '8px 14px', borderRadius: '10px', width: '280px' }}>
-            <Search size={16} color="#9ca3af" />
+        <div style={{ display: 'flex', gap: 'var(--ins-space-2)', alignItems: 'center' }}>
+          <div style={{ position: 'relative' }}>
+            <Search
+              size={14}
+              style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: 'var(--ins-mist-500)' }}
+            />
             <input
+              className="ins-input"
+              style={{ paddingLeft: '28px', width: '220px' }}
               type="text"
-              placeholder="Search AI memories (e.g. .env, key)..."
+              placeholder="Filter by tool or path"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: '0.85rem', outline: 'none', width: '100%' }}
+              onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
+          <button className="ins-btn" onClick={fetchRealMemories} disabled={loading}>
+            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+          </button>
         </div>
-      </div>
+      </header>
 
       {loading ? (
-        <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
-          Scanning local AI memory stores...
+        <div className="ins-empty">Reading local storage locations…</div>
+      ) : failed ? (
+        <div className="ins-note ins-note--error">
+          Can&apos;t reach the local engine on port 3333. Make sure AICacheCleaner is running, then refresh.
         </div>
-      ) : apiFailed ? (
-        <div style={{ padding: '40px', textAlign: 'center', color: '#f87171' }}>
-          Couldn't reach the local scan engine at <code>http://127.0.0.1:3333</code>.
-          <br />Make sure AICacheCleaner is running, then click Refresh.
-        </div>
-      ) : memories.length === 0 ? (
-        <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
-          No local AI memory stores found on this machine.
-          <br />Supported stores include <code>.gemini</code>, <code>.mcp</code>, <code>.claude</code>, and <code>.cursor</code>.
+      ) : filtered.length === 0 ? (
+        <div className="ins-empty">
+          <strong>{memories.length === 0 ? 'No stored transcripts found' : 'Nothing matches that filter'}</strong>
+          {memories.length === 0
+            ? 'Supported locations include .claude, .gemini, .cursor and .mcp.'
+            : 'Clear the filter to see all locations.'}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {filtered.map(item => (
-            <div key={item.id} className="glass-card" style={{ padding: '16px', background: 'rgba(255, 255, 255, 0.02)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileText size={16} color="#00f2fe" />
-                  <span style={{ fontWeight: 700, color: '#f3f4f6' }}>{item.title}</span>
-                  <span style={{ fontSize: '0.75rem', color: '#9ca3af', background: 'rgba(255, 255, 255, 0.08)', padding: '2px 8px', borderRadius: '4px' }}>
-                    {item.tool}
-                  </span>
-                </div>
-
-                {item.sensitiveFlag && (
-                  <span className="badge badge-yellow" style={{ fontSize: '0.7rem' }}>
-                    <Lock size={10} /> Contains Local Transcripts
-                  </span>
-                )}
-              </div>
-
-              <div style={{ fontSize: '0.82rem', color: '#9ca3af', fontFamily: 'monospace', background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '6px', marginBottom: '10px' }}>
-                {item.snippet}
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#6b7280' }}>
-                <span>Footprint: {item.size}</span>
-                <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <ShieldCheck size={12} /> Stored locally on hard drive
-                </span>
-              </div>
-            </div>
-          ))}
+        <div className="ins-panel" style={{ padding: 'var(--ins-space-4)' }}>
+          <table className="ins-table">
+            <thead>
+              <tr>
+                <th>Location</th>
+                <th style={{ width: '110px' }}>Tool</th>
+                <th style={{ width: '140px' }}>Contents</th>
+                <th style={{ width: '90px' }} className="ins-num">Size</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(item => (
+                <tr key={item.id}>
+                  <td>
+                    <div style={{ color: 'var(--ins-mist-50)' }}>{item.title}</div>
+                    <span className="ins-data ins-meta">{item.path ?? item.snippet}</span>
+                  </td>
+                  <td className="ins-meta">{item.tool}</td>
+                  <td>
+                    {item.sensitiveFlag ? (
+                      <span className="ins-tier ins-tier--review">
+                        <Lock size={9} style={{ marginLeft: '-2px' }} /> Conversations
+                      </span>
+                    ) : (
+                      <span className="ins-meta">Config &amp; cache</span>
+                    )}
+                  </td>
+                  <td className="ins-num ins-data">{item.size}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

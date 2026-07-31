@@ -11,26 +11,21 @@ import { MemoryInspector } from './components/MemoryInspector';
 import { HistoryTab } from './components/HistoryTab';
 import { SettingsTab } from './components/SettingsTab';
 import { PreDeleteModal } from './components/PreDeleteModal';
-import { HardDrive, Cpu, Package, Eye, CheckCircle2, Sparkles, History, ShieldCheck, Settings, Laptop, Bot, LayoutDashboard, Code2 } from 'lucide-react';
+import { isRecentlyModified } from './lib/itemFilters';
+import { HardDrive, Cpu, Package, Eye, CheckCircle2, Sparkles, History, ShieldCheck, Settings, Laptop, Bot, LayoutDashboard, Code2, AlertTriangle } from 'lucide-react';
 
 // Empty until the real scan loads. We intentionally do NOT seed the UI with
 // hardcoded sample items (previous versions shipped the developer's personal
 // C:\Users\... paths and fake GB sizes to every new user).
 const emptyScanItems: AICacheItem[] = [];
 
-// Treat items modified in the last 30 days as "active/recent".
-const RECENT_WINDOW_DAYS = 30;
-
 // Active folders on top (newest first), untouched folders at bottom
 const sortItemsByPriority = (raw: AICacheItem[]): AICacheItem[] => {
-  const now = Date.now();
-  const recentCutoff = now - RECENT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-
   return [...raw].sort((a, b) => {
     const aTime = Date.parse(a.lastModified);
     const bTime = Date.parse(b.lastModified);
-    const aRecent = !Number.isNaN(aTime) && aTime >= recentCutoff;
-    const bRecent = !Number.isNaN(bTime) && bTime >= recentCutoff;
+    const aRecent = isRecentlyModified(a.lastModified);
+    const bRecent = isRecentlyModified(b.lastModified);
 
     if (aRecent && !bRecent) return -1;
     if (!aRecent && bRecent) return 1;
@@ -65,6 +60,7 @@ export const App: React.FC = () => {
   const [processes, setProcesses] = useState<AIProcessItem[]>(emptyProcesses);
   const [snapshots, setSnapshots] = useState<SnapshotItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [cleaning, setCleaning] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<TabType>(getInitialTab);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -97,10 +93,29 @@ export const App: React.FC = () => {
   const [pendingCleanItems, setPendingCleanItems] = useState<AICacheItem[]>([]);
   const [isPreDeleteModalOpen, setIsPreDeleteModalOpen] = useState<boolean>(false);
 
+  // Saved preferences. These were previously written to config.json and read by
+  // nothing; the threshold alert and restore-point default now depend on them.
+  const [appConfig, setAppConfig] = useState<{
+    cacheThresholdGb: number;
+    restorePointPolicy: 'PROMPT' | 'ALWAYS' | 'NEVER';
+    customRestorePath: string;
+  } | null>(null);
+
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:3333/api/config');
+      if (res.ok) setAppConfig(await res.json());
+    } catch (e) {
+      console.warn('Could not load saved preferences:', (e as Error).message);
+    }
+  };
+
 
   const fetchSystemData = async () => {
+    setScanError(null);
     try {
       const response = await fetch('http://localhost:3333/api/scan');
+      if (!response.ok) throw new Error(`Scan API returned ${response.status}`);
       const data = await response.json();
 
       // Show only real scan results. Do not merge in any hardcoded sample data.
@@ -114,17 +129,26 @@ export const App: React.FC = () => {
       const snapData = await snapRes.json();
       setSnapshots(snapData.snapshots || []);
     } catch (e) {
-      console.warn('API offline - using initial scan state');
+      // Surface the failure honestly instead of silently falling back to empty.
+      setScanError(`Could not reach the local engine: ${(e as Error).message}. Make sure the backend is running on port 3333.`);
+    } finally {
+      // Loading ends when the fetch resolves/rejects — not on a fixed timer.
+      setLoading(false);
     }
   };
 
 
   useEffect(() => {
-    const splashTimer = setTimeout(() => setLoading(false), 400);
     fetchSystemData();
     checkGitHubUpdate();
-    return () => clearTimeout(splashTimer);
+    fetchConfig();
   }, []);
+
+  // Threshold alert: fires when the measured AI footprint exceeds the GB limit
+  // saved in Settings.
+  const thresholdGb = appConfig?.cacheThresholdGb ?? 0;
+  const totalGb = metrics ? metrics.totalAICacheBytes / (1024 * 1024 * 1024) : 0;
+  const overThreshold = thresholdGb > 0 && totalGb > thresholdGb;
 
   const requestClean = (selectedIds: string[]) => {
     const targetItems = items.filter(i => selectedIds.includes(i.id));
@@ -145,8 +169,21 @@ export const App: React.FC = () => {
         body: JSON.stringify({ itemIds, targetPaths, createRestorePoint })
       });
       const data = await response.json();
-      if (response.ok && data.success) {
-        showToast(`Cleaned ${itemIds.length} items! ${createRestorePoint ? 'Restore Point Created' : 'Soft-deleted to Recycle Bin'}`);
+      if (response.ok && typeof data.cleanedCount === 'number') {
+        // Report what actually happened, not what was requested. Previously the
+        // toast always claimed the requested count, so a run that deleted
+        // nothing still said "Cleaned N items!".
+        const parts = [`Cleaned ${data.cleanedCount} of ${data.requestedCount ?? itemIds.length} items`];
+        if (data.reclaimedFormatted) parts.push(`freed ${data.reclaimedFormatted}`);
+        if (data.skippedCount) parts.push(`${data.skippedCount} skipped (already gone)`);
+        if (data.failedCount) parts.push(`${data.failedCount} failed`);
+        parts.push(createRestorePoint ? 'restore point created' : 'soft-deleted to Recycle Bin');
+        showToast(parts.join(' • '));
+
+        if (Array.isArray(data.errors) && data.errors.length > 0) {
+          console.error('[Clean] failures:', data.errors);
+        }
+        // Refresh even on partial failure — some items really were removed.
         fetchSystemData();
       } else {
         showToast(`Error: ${data.error || 'Failed to clean items.'}`);
@@ -179,22 +216,26 @@ export const App: React.FC = () => {
         body: JSON.stringify({ snapshotId, customDestinationPath })
       });
       const data = await response.json();
-      if (response.ok && data.success) {
-        // Items are soft-deleted to the OS Recycle Bin / Trash; "restoredPaths"
-        // lists those already back in place. Any remaining must be recovered from
-        // the Recycle Bin / Trash manually (data.error carries that guidance).
-        const backInPlace = Array.isArray(data.restoredPaths) ? data.restoredPaths.length : 0;
-        if (data.recoverableFromTrash && data.error) {
-          showToast(`${backInPlace} item(s) verified in place. Remaining can be restored from your Recycle Bin / Trash.`);
-        } else {
-          showToast(`Restored snapshot ${snapshotId}! (${backInPlace} item(s) verified in place)`);
-        }
-        fetchSystemData();
-      } else {
-        showToast(`Error restoring snapshot: ${data.error || 'Failed'}`);
+
+      if (!response.ok) {
+        showToast(`Could not restore: ${data.error || `server returned ${response.status}`}`);
+        return;
       }
+
+      // Report what actually moved. Restore now really pulls files back out of
+      // the Recycle Bin, so these counts describe real filesystem changes.
+      const parts: string[] = [];
+      if (data.restoredCount) parts.push(`Restored ${data.restoredCount} item(s)`);
+      if (data.alreadyInPlaceCount) parts.push(`${data.alreadyInPlaceCount} already in place`);
+      if (data.failedCount) parts.push(`${data.failedCount} could not be recovered`);
+      showToast(parts.length ? parts.join(' • ') : 'Nothing needed restoring.');
+
+      if (Array.isArray(data.failed) && data.failed.length > 0) {
+        console.warn('[Restore] failures:', data.failed);
+      }
+      fetchSystemData();
     } catch (e) {
-      showToast(`Failed to restore snapshot: ${(e as Error).message}`);
+      showToast(`Could not restore: ${(e as Error).message}`);
     }
   };
 
@@ -222,199 +263,136 @@ export const App: React.FC = () => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  // Navigation grouped by intent. Ten flat items gave every destination equal
+  // weight and no sense of what the app is for.
+  const navGroups: { label: string; items: { tab: TabType; icon: React.ReactNode; text: string }[] }[] = [
+    {
+      label: 'Overview',
+      items: [{ tab: 'DASHBOARD', icon: <LayoutDashboard size={15} />, text: 'Storage overview' }]
+    },
+    {
+      label: 'Reclaim',
+      items: [
+        { tab: 'SAFE_DELETE', icon: <Sparkles size={15} />, text: 'Safe to delete' },
+        { tab: 'STORAGE', icon: <HardDrive size={15} />, text: 'All locations' },
+        { tab: 'SOFTWARE', icon: <Laptop size={15} />, text: 'Installed AI tools' },
+        { tab: 'AUTOBOTS', icon: <Bot size={15} />, text: 'Agents & crawlers' }
+      ]
+    },
+    {
+      label: 'Inspect',
+      items: [
+        { tab: 'PROCESSES', icon: <Cpu size={15} />, text: 'Running processes' },
+        { tab: 'MEMORY', icon: <Eye size={15} />, text: 'Stored transcripts' }
+      ]
+    },
+    {
+      label: 'Recover & move',
+      items: [
+        { tab: 'HISTORY', icon: <History size={15} />, text: 'Restore points' },
+        { tab: 'MIGRATION', icon: <Package size={15} />, text: 'Export & migrate' }
+      ]
+    },
+    {
+      label: 'Configure',
+      items: [{ tab: 'SETTINGS', icon: <Settings size={15} />, text: 'Settings' }]
+    }
+  ];
+
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      {/* Toast Notification */}
+    <div className="ins-scope" style={{ display: 'flex', minHeight: '100vh', background: 'var(--ins-graphite-900)' }}>
+      {/* Toast */}
       {toastMessage && (
-        <div style={{
-          position: 'fixed',
-          bottom: '24px',
-          right: '24px',
-          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-          color: '#fff',
-          padding: '12px 20px',
-          borderRadius: '12px',
-          boxShadow: '0 8px 25px rgba(16, 185, 129, 0.4)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          fontWeight: 600,
-          zIndex: 3000,
-          fontSize: '0.9rem'
-        }}>
-          <CheckCircle2 size={18} /> {toastMessage}
+        <div
+          className="ins-note ins-note--ok"
+          role="status"
+          style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 3000, background: 'var(--ins-graphite-800)', borderColor: 'rgba(63,185,138,0.4)' }}
+        >
+          <CheckCircle2 size={15} /> {toastMessage}
         </div>
       )}
 
-      {/* LEFT SIDEBAR NAVIGATION */}
-      <aside className="glass-card" style={{
-        width: '240px',
-        minWidth: '240px',
-        borderRadius: 0,
-        borderRight: '1px solid var(--border-color)',
-        borderTop: 'none',
-        borderLeft: 'none',
-        borderBottom: 'none',
-        padding: '24px 16px',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        height: '100vh',
-        position: 'sticky',
-        top: 0
-      }}>
-        <div>
-          {/* Brand Header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '28px', paddingLeft: '4px' }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #00f2fe 0%, #4facfe 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 15px rgba(0, 242, 254, 0.4)'
-            }}>
-              <ShieldCheck size={24} color="#0b0f19" />
-            </div>
-            <div>
-              <h1 style={{ fontSize: '1.05rem', fontWeight: 800, letterSpacing: '-0.02em', background: 'linear-gradient(90deg, #ffffff, #9ca3af)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                AICacheCleaner
-              </h1>
-              <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 700, letterSpacing: '0.05em' }}>
-                v1.0 • 100% FREE FOSS
-              </span>
-            </div>
-          </div>
-
-          {/* Sidebar Menu Items - Concise & Point to Point Naming */}
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <button
-              className={`sidebar-nav-btn ${activeTab === 'DASHBOARD' ? 'active' : ''}`}
-              onClick={() => changeTab('DASHBOARD')}
-            >
-              <LayoutDashboard size={18} color={activeTab === 'DASHBOARD' ? '#ffffff' : '#00f2fe'} />
-              <span>Dashboard</span>
-            </button>
-
-            <button
-              className={`sidebar-nav-btn ${activeTab === 'SAFE_DELETE' ? 'active-green' : ''}`}
-              onClick={() => changeTab('SAFE_DELETE')}
-            >
-              <Sparkles size={18} color={activeTab === 'SAFE_DELETE' ? '#ffffff' : '#34d399'} />
-              <span>Safe Delete</span>
-            </button>
-
-            <button
-              className={`sidebar-nav-btn ${activeTab === 'STORAGE' ? 'active' : ''}`}
-              onClick={() => changeTab('STORAGE')}
-            >
-              <HardDrive size={18} color={activeTab === 'STORAGE' ? '#ffffff' : '#9ca3af'} />
-              <span>Drive Footprint</span>
-            </button>
-
-            <button
-              className={`sidebar-nav-btn ${activeTab === 'SOFTWARE' ? 'active' : ''}`}
-              onClick={() => changeTab('SOFTWARE')}
-            >
-              <Laptop size={18} color={activeTab === 'SOFTWARE' ? '#ffffff' : '#9ca3af'} />
-              <span>AI Software</span>
-            </button>
-
-            <button
-              className={`sidebar-nav-btn ${activeTab === 'AUTOBOTS' ? 'active' : ''}`}
-              onClick={() => changeTab('AUTOBOTS')}
-            >
-              <Bot size={18} color={activeTab === 'AUTOBOTS' ? '#ffffff' : '#c084fc'} />
-              <span>Clawbots & Bots</span>
-            </button>
-
-            <button
-              className={`sidebar-nav-btn ${activeTab === 'HISTORY' ? 'active' : ''}`}
-              onClick={() => changeTab('HISTORY')}
-            >
-              <History size={18} color={activeTab === 'HISTORY' ? '#ffffff' : '#9ca3af'} />
-              <span>Restore Points</span>
-            </button>
-
-            <button
-              className={`sidebar-nav-btn ${activeTab === 'PROCESSES' ? 'active' : ''}`}
-              onClick={() => changeTab('PROCESSES')}
-            >
-              <Cpu size={18} color={activeTab === 'PROCESSES' ? '#ffffff' : '#9ca3af'} />
-              <span>Process Inspector</span>
-            </button>
-
-            <button
-              className={`sidebar-nav-btn ${activeTab === 'MIGRATION' ? 'active' : ''}`}
-              onClick={() => changeTab('MIGRATION')}
-            >
-              <Package size={18} color={activeTab === 'MIGRATION' ? '#ffffff' : '#9ca3af'} />
-              <span>PC Migration</span>
-            </button>
-
-            <button
-              className={`sidebar-nav-btn ${activeTab === 'MEMORY' ? 'active' : ''}`}
-              onClick={() => changeTab('MEMORY')}
-            >
-              <Eye size={18} color={activeTab === 'MEMORY' ? '#ffffff' : '#9ca3af'} />
-              <span>Privacy Inspector</span>
-            </button>
-
-            <button
-              className={`sidebar-nav-btn ${activeTab === 'SETTINGS' ? 'active' : ''}`}
-              onClick={() => changeTab('SETTINGS')}
-            >
-              <Settings size={18} color={activeTab === 'SETTINGS' ? '#ffffff' : '#9ca3af'} />
-              <span>Settings</span>
-            </button>
-          </nav>
-        </div>
-
-        {/* BOTTOM LEFT SIDEBAR BRANDING & SAAS DEVELOPMENT CONTACT CTA */}
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.1) 0%, rgba(157, 78, 221, 0.1) 100%)',
-          padding: '12px',
-          borderRadius: '12px',
-          border: '1px solid rgba(0, 242, 254, 0.3)',
+      {/* Sidebar */}
+      <aside
+        style={{
+          width: '224px',
+          minWidth: '224px',
+          borderRight: '1px solid var(--ins-graphite-700)',
+          background: 'var(--ins-graphite-850)',
+          padding: 'var(--ins-space-5) var(--ins-space-3)',
           display: 'flex',
           flexDirection: 'column',
-          gap: '6px',
-          marginTop: 'auto'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#00f2fe', fontSize: '0.8rem', fontWeight: 800 }}>
-            <Code2 size={16} /> Dice Codes
+          height: '100vh',
+          position: 'sticky',
+          top: 0,
+          overflowY: 'auto'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '0 10px', marginBottom: 'var(--ins-space-6)' }}>
+          <ShieldCheck size={18} style={{ color: 'var(--ins-mist-300)' }} />
+          <div>
+            <div style={{ fontFamily: 'var(--ins-font-label)', fontSize: '0.9375rem', fontWeight: 600, letterSpacing: '-0.01em' }}>
+              AICacheCleaner
+            </div>
+            <div className="ins-data" style={{ fontSize: '0.6875rem', color: 'var(--ins-mist-500)' }}>v1.0.0</div>
           </div>
-          <p style={{ fontSize: '0.72rem', color: '#9ca3af', lineHeight: '1.3' }}>
-            Need custom AI software or web apps?
-          </p>
-          <a
-            href="https://dicecodes.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              fontSize: '0.74rem',
-              color: '#ffffff',
-              background: 'linear-gradient(135deg, #00c6ff 0%, #0072ff 100%)',
-              padding: '6px 10px',
-              borderRadius: '8px',
-              textDecoration: 'none',
-              fontWeight: 700,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px',
-              boxShadow: '0 2px 10px rgba(0, 198, 255, 0.3)'
-            }}
-          >
-            Visit DiceCodes.com ↗
-          </a>
         </div>
+
+        <nav style={{ flex: 1 }}>
+          {navGroups.map(group => (
+            <div key={group.label} className="ins-nav-group">
+              <span className="ins-label">{group.label}</span>
+              {group.items.map(item => (
+                <button
+                  key={item.tab}
+                  className={activeTab === item.tab ? 'ins-nav-btn is-active' : 'ins-nav-btn'}
+                  onClick={() => changeTab(item.tab)}
+                  aria-current={activeTab === item.tab ? 'page' : undefined}
+                >
+                  {item.icon}
+                  <span>{item.text}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <a
+          href="https://dicecodes.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ins-meta"
+          style={{ padding: '10px', marginTop: 'var(--ins-space-5)', borderTop: '1px solid var(--ins-graphite-700)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--ins-mist-500)' }}
+        >
+          <Code2 size={13} /> Built by Dice Codes
+        </a>
       </aside>
 
-      {/* MAIN CONTENT WORKSPACE */}
-      <main style={{ flex: 1, padding: '32px', overflowY: 'auto', maxHeight: '100vh' }}>
+      {/* Main workspace. min-width:0 is what stops grid children from forcing
+          the column wider than the viewport and clipping the rightmost card. */}
+      <main style={{ flex: 1, minWidth: 0, padding: 'var(--ins-space-6)', overflowY: 'auto', overflowX: 'hidden', maxHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 'var(--ins-space-4)' }}>
+        {scanError && (
+          <div className="ins-note ins-note--error">
+            <AlertTriangle size={15} />
+            <span>{scanError}</span>
+            <button className="ins-btn ins-btn--quiet" onClick={fetchSystemData} style={{ marginLeft: 'auto' }}>
+              Try again
+            </button>
+          </div>
+        )}
+
+        {overThreshold && (
+          <div className="ins-note ins-note--warn">
+            <AlertTriangle size={15} />
+            <span>
+              AI storage is <strong className="ins-data">{totalGb.toFixed(1)} GB</strong>, above your {thresholdGb} GB alert threshold.
+            </span>
+            <button className="ins-btn ins-btn--quiet" onClick={() => changeTab('SAFE_DELETE')} style={{ marginLeft: 'auto' }}>
+              Review safe caches
+            </button>
+          </div>
+        )}
+
         {activeTab === 'DASHBOARD' && (
           <MainDashboardView
             metrics={metrics}
@@ -431,6 +409,8 @@ export const App: React.FC = () => {
         {activeTab === 'SAFE_DELETE' && (
           <SafeDeleteSection
             items={items}
+            cleaning={cleaning}
+            loading={loading}
             onCleanSelected={requestClean}
             onOpenFolder={handleOpenFolder}
           />
@@ -439,6 +419,8 @@ export const App: React.FC = () => {
         {activeTab === 'STORAGE' && (
           <TargetListTable
             items={items}
+            cleaning={cleaning}
+            loading={loading}
             onCleanSelected={requestClean}
             onOpenFolder={handleOpenFolder}
           />
@@ -463,6 +445,7 @@ export const App: React.FC = () => {
             snapshots={snapshots}
             onRestore={handleRestoreSnapshot}
             onOpenFolder={handleOpenFolder}
+            defaultRestorePath={appConfig?.customRestorePath}
           />
         )}
 
@@ -470,13 +453,12 @@ export const App: React.FC = () => {
           <ProcessInspector
             processes={processes}
             onKillProcess={handleKillProcess}
+            loading={loading}
           />
         )}
 
         {activeTab === 'MIGRATION' && (
-          <MigrationWizard
-            onOpenFolder={handleOpenFolder}
-          />
+          <MigrationWizard />
         )}
 
         {activeTab === 'MEMORY' && (
@@ -492,7 +474,8 @@ export const App: React.FC = () => {
       <PreDeleteModal
         isOpen={isPreDeleteModalOpen}
         itemsToClean={pendingCleanItems}
-        onConfirm={handleConfirmClean}
+        restorePointPolicy={appConfig?.restorePointPolicy}
+        onConfirmClean={handleConfirmClean}
         onCancel={() => setIsPreDeleteModalOpen(false)}
       />
     </div>

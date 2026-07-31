@@ -1,4 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Fonts are self-hosted via @fontsource (see src/lib/tokens.css).
+   This file previously pulled Outfit + JetBrains Mono from
+   fonts.googleapis.com on every launch, which (a) failed in the packaged
+   offline app, leaving the UI on a fallback face, and (b) contradicted the
+   "100% Local Execution — zero data leaves your machine" guarantee, since it
+   sent a request to Google each time the app opened. */
+@import './lib/tokens.css';
 
 :root {
   --bg-dark: #0b0f19;
@@ -25,7 +31,7 @@
 }
 
 body {
-  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'IBM Plex Sans Variable', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   background-color: var(--bg-dark);
   color: var(--text-main);
   min-height: 100vh;
@@ -36,7 +42,7 @@ body {
 }
 
 code, pre {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
 }
 
 /* Glassmorphism Card Utility */
@@ -196,4 +202,45 @@ code, pre {
 
 .btn-secondary:hover {
   background: rgba(255, 255, 255, 0.15);
+}
+
+/* ---------------------------------------------------------------------------
+   Loading spinner.
+
+   Eight components render <RefreshCw className={loading ? 'spin' : ''} /> (and
+   MigrationWizard uses the Tailwind-style name `animate-spin`), but neither
+   class was ever defined and there is no Tailwind in this project — so every
+   "Scanning..." indicator sat completely still. On a cold scan that made the
+   app look frozen.
+   --------------------------------------------------------------------------- */
+@keyframes aicc-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.spin,
+.animate-spin {
+  animation: aicc-spin 0.9s linear infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin,
+  .animate-spin {
+    animation-duration: 2.4s;
+  }
+}
+
+/* Badge variants referenced by AutoBotsTab (.badge-purple) and
+   MigrationWizard (.badge-cyan) that had no definition. */
+.badge-purple {
+  background: rgba(192, 132, 252, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(192, 132, 252, 0.35);
+}
+
+.badge-cyan {
+  background: rgba(0, 242, 254, 0.15);
+  color: #00f2fe;
+  border: 1px solid rgba(0, 242, 254, 0.35);
 }

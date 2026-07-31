@@ -1,7 +1,11 @@
-import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { AICacheItem, SafetyTier } from '../src/types';
+import type { AICacheItem, SafetyTier } from '../src/types';
+import { mapLimit, pathExists, readdirSafe, statSafe } from './fsAsync';
+
+// How many directory reads / file stats may be in flight at once. High enough
+// to keep the disk busy, low enough to stay well under the fd limit.
+const IO_CONCURRENCY = 16;
 
 export function formatBytes(bytes: number): string {
   if (bytes <= 0 || isNaN(bytes)) return '0 B';
@@ -36,53 +40,75 @@ export function calculateNonOverlappingSize(items: AICacheItem[]): number {
   return totalBytes;
 }
 
-// Iterative Stack-Based Directory Size Calculation
-export function getDirectorySize(dirPath: string): number {
+// Breadth-first, bounded-concurrency directory size calculation.
+//
+// This was previously a synchronous readdirSync/statSync walk. Because the
+// Express server runs inside the Electron main process, a single scan pegged
+// the event loop for the whole walk — measured at 43 s on a normal dev machine,
+// during which a trivial GET /api/config took 15.7 s to answer and the window
+// stopped responding. Every await below is a yield point, so the server stays
+// responsive while the disk work happens.
+export async function getDirectorySize(dirPath: string): Promise<number> {
+  const rootStat = await statSafe(dirPath);
+  if (!rootStat) return 0;
+  if (!rootStat.isDirectory()) return rootStat.size;
+
   let totalSize = 0;
-  if (!fs.existsSync(dirPath)) return 0;
+  let frontier: string[] = [dirPath];
 
-  try {
-    const stats = fs.statSync(dirPath);
-    if (!stats.isDirectory()) {
-      return stats.size;
-    }
+  while (frontier.length > 0) {
+    const levelResults = await mapLimit(frontier, IO_CONCURRENCY, async (dir) => {
+      const entries = await readdirSafe(dir);
+      const childDirs: string[] = [];
+      const filePaths: string[] = [];
 
-    const stack: string[] = [dirPath];
-
-    while (stack.length > 0) {
-      const current = stack.pop()!;
-      try {
-        const files = fs.readdirSync(current, { withFileTypes: true });
-        for (const file of files) {
-          const filePath = path.join(current, file.name);
-          if (file.isDirectory()) {
-            stack.push(filePath);
-          } else if (file.isFile()) {
-            try {
-              const fileStats = fs.statSync(filePath);
-              totalSize += fileStats.size;
-            } catch (e) {
-              // Skip locked files
-            }
-          }
-        }
-      } catch (e) {
-        // Skip unreadable directories
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        // Symlinks/junctions are deliberately not followed: they would both
+        // double-count and risk cycles.
+        if (entry.isDirectory()) childDirs.push(full);
+        else if (entry.isFile()) filePaths.push(full);
       }
+
+      const stats = await mapLimit(filePaths, IO_CONCURRENCY, statSafe);
+      let size = 0;
+      for (const s of stats) if (s) size += s.size;
+
+      return { size, childDirs };
+    });
+
+    const nextFrontier: string[] = [];
+    for (const result of levelResults) {
+      totalSize += result.size;
+      nextFrontier.push(...result.childDirs);
     }
-  } catch (e) {
-    // Skip unreadable root
+    frontier = nextFrontier;
   }
+
   return totalSize;
 }
 
-// Strict AI / Software Project Fingerprint Verifier
-export function isGenuineAIProject(dirPath: string): boolean {
-  if (!fs.existsSync(dirPath)) return false;
-  try {
-    const stats = fs.statSync(dirPath);
-    if (!stats.isDirectory()) return false;
+// File extensions that mark a directory as a downloaded-media folder rather
+// than a project. Matched with endsWith, never substring: `includes('.ai')`
+// used to reject legitimate paths such as `~/.ai-cache-cleaner` (this app's own
+// data directory) and any folder named e.g. `my.aiproject`.
+export const JUNK_EXTENSIONS = [
+  '.avif', '.crdownload', '.doc', '.docx', '.exe', '.gz', '.jpeg', '.jpg',
+  '.png', '.gif', '.svg', '.webp', '.psd', '.ai', '.pdf', '.xlsx', '.pptx',
+  '.zip', '.rar', '.7z', '.tar', '.dll', '.iso', '.mp4', '.avi', '.mov', '.mp3'
+];
 
+export function hasJunkExtension(name: string): boolean {
+  const lower = name.toLowerCase();
+  return JUNK_EXTENSIONS.some(ext => lower.endsWith(ext));
+}
+
+// Strict AI / Software Project Fingerprint Verifier
+export async function isGenuineAIProject(dirPath: string): Promise<boolean> {
+  const stats = await statSafe(dirPath);
+  if (!stats || !stats.isDirectory()) return false;
+
+  try {
     const folderName = path.basename(dirPath).toLowerCase();
     const fullPathLower = dirPath.toLowerCase();
 
@@ -90,18 +116,12 @@ export function isGenuineAIProject(dirPath: string): boolean {
     if (folderName.startsWith('.')) return false;
     if (fullPathLower.includes('\\downl') || fullPathLower.includes('\\downloads') || fullPathLower.includes('\\temp') || fullPathLower.includes('$recycle')) return false;
 
-    const junkExtensions = [
-      '.avif', '.crdownload', '.doc', '.docx', '.exe', '.gz', '.jpeg', '.jpg',
-      '.png', '.gif', '.svg', '.webp', '.psd', '.ai', '.pdf', '.xlsx', '.pptx',
-      '.zip', '.rar', '.7z', '.tar', '.dll', '.iso', '.mp4', '.avi', '.mov', '.mp3'
-    ];
-
-    if (junkExtensions.some(ext => folderName.endsWith(ext) || folderName.includes(ext))) {
+    if (hasJunkExtension(folderName)) {
       return false;
     }
 
     // REQUIRE AI / Code Project Fingerprint Files
-    const subFiles = fs.readdirSync(dirPath).map(f => f.toLowerCase());
+    const subFiles = (await readdirSafe(dirPath)).map(f => f.name.toLowerCase());
     const aiCodeFingerprints = [
       'package.json',
       '.git',
@@ -133,13 +153,12 @@ export function isGenuineAIProject(dirPath: string): boolean {
   }
 }
 
-export function isLocalhostRunnable(dirPath: string): boolean {
-  if (!fs.existsSync(dirPath)) return false;
-  try {
-    const stats = fs.statSync(dirPath);
-    if (!stats.isDirectory()) return false;
+export async function isLocalhostRunnable(dirPath: string): Promise<boolean> {
+  const stats = await statSafe(dirPath);
+  if (!stats || !stats.isDirectory()) return false;
 
-    const files = fs.readdirSync(dirPath).map(f => f.toLowerCase());
+  try {
+    const files = (await readdirSafe(dirPath)).map(f => f.name.toLowerCase());
     const webMarkers = [
       'package.json',
       'vite.config.ts',
@@ -161,89 +180,95 @@ export function isLocalhostRunnable(dirPath: string): boolean {
   }
 }
 
-function scanSecondaryDrives(): AICacheItem[] {
+function isSkippableTopLevelDir(name: string): boolean {
+  const lower = name.toLowerCase();
+  return (
+    lower.startsWith('$') ||
+    lower.includes('system') ||
+    lower === 'windows' ||
+    lower.startsWith('.') ||
+    lower.includes('downl') ||
+    lower.includes('temp')
+  );
+}
+
+async function buildProjectItem(
+  projectPath: string,
+  id: string,
+  name: string,
+  root: string,
+  descriptor: string
+): Promise<AICacheItem | null> {
+  const size = await getDirectorySize(projectPath);
+  if (size <= 0) return null;
+
+  const stat = await statSafe(projectPath);
+  if (!stat) return null;
+
+  const runnable = await isLocalhostRunnable(projectPath);
+  const drive = root.substring(0, 2);
+
+  return {
+    id,
+    name,
+    category: 'Antigravity',
+    path: projectPath,
+    sizeBytes: size,
+    formattedSize: formatBytes(size),
+    tier: 'YELLOW',
+    canDelete: true,
+    impactDescription: `Verified ${descriptor} on Drive ${drive}.${runnable ? ' Runnable on Localhost.' : ''}`,
+    lastModified: stat.mtime.toISOString().split('T')[0],
+    safeReason: `Project folder located on Drive ${drive}. Contains AI project files, node_modules, or code transcripts.`,
+    isRunnableProject: runnable
+  };
+}
+
+async function scanSecondaryDrives(): Promise<AICacheItem[]> {
   const items: AICacheItem[] = [];
   const secondaryDriveRoots = ['D:\\', 'E:\\', 'F:\\'];
 
   for (const root of secondaryDriveRoots) {
-    if (!fs.existsSync(root)) continue;
+    if (!(await pathExists(root))) continue;
 
-    try {
-      const topEntries = fs.readdirSync(root, { withFileTypes: true });
+    const topEntries = (await readdirSafe(root)).filter(
+      e => e.isDirectory() && !isSkippableTopLevelDir(e.name)
+    );
 
-      for (const entry of topEntries) {
-        if (!entry.isDirectory()) continue;
-        const entryNameLower = entry.name.toLowerCase();
+    // Each top-level directory is inspected independently and concurrently.
+    const perTop = await mapLimit(topEntries, 4, async (entry) => {
+      const found: AICacheItem[] = [];
+      const firstLevelPath = path.join(root, entry.name);
 
-        if (
-          entryNameLower.startsWith('$') ||
-          entryNameLower.includes('system') ||
-          entryNameLower === 'windows' ||
-          entryNameLower.startsWith('.') ||
-          entryNameLower.includes('downl') ||
-          entryNameLower.includes('temp')
-        ) continue;
-
-        const firstLevelPath = path.join(root, entry.name);
-
-        if (isGenuineAIProject(firstLevelPath)) {
-          const size = getDirectorySize(firstLevelPath);
-          if (size > 0) {
-            const stat = fs.statSync(firstLevelPath);
-            const runnable = isLocalhostRunnable(firstLevelPath);
-
-            items.push({
-              id: `secondary-${root.charAt(0)}-top-${entry.name}`,
-              name: `AI Root Workspace: ${entry.name} (${root.substring(0, 2)})`,
-              category: 'Antigravity',
-              path: firstLevelPath,
-              sizeBytes: size,
-              formattedSize: formatBytes(size),
-              tier: 'YELLOW',
-              canDelete: true,
-              impactDescription: `Verified top-level AI coding project on Drive ${root.substring(0, 2)}.${runnable ? ' Runnable on Localhost.' : ''}`,
-              lastModified: stat.mtime.toISOString().split('T')[0],
-              safeReason: `Root AI project workspace located on Drive ${root.substring(0, 2)}. Contains AI code, node_modules, and git history.`
-            });
-          }
-        }
-
-        try {
-          const childEntries = fs.readdirSync(firstLevelPath, { withFileTypes: true });
-
-          for (const child of childEntries) {
-            if (!child.isDirectory()) continue;
-            const childPath = path.join(firstLevelPath, child.name);
-
-            if (!isGenuineAIProject(childPath)) continue;
-
-            const size = getDirectorySize(childPath);
-            if (size > 0) {
-              const stat = fs.statSync(childPath);
-              const runnable = isLocalhostRunnable(childPath);
-
-              items.push({
-                id: `secondary-${root.charAt(0)}-${entry.name}-${child.name}`,
-                name: `AI Project: ${entry.name}/${child.name} (${root.substring(0, 2)})`,
-                category: 'Antigravity',
-                path: childPath,
-                sizeBytes: size,
-                formattedSize: formatBytes(size),
-                tier: 'YELLOW',
-                canDelete: true,
-                impactDescription: `Verified AI coding project on Drive ${root.substring(0, 2)}.${runnable ? ' Runnable on Localhost.' : ''}`,
-                lastModified: stat.mtime.toISOString().split('T')[0],
-                safeReason: `Project folder located on Drive ${root.substring(0, 2)}. Contains AI project files, node_modules, or code transcripts.`
-              });
-            }
-          }
-        } catch (e) {
-          // Skip unreadable subfolders
-        }
+      if (await isGenuineAIProject(firstLevelPath)) {
+        const item = await buildProjectItem(
+          firstLevelPath,
+          `secondary-${root.charAt(0)}-top-${entry.name}`,
+          `AI Root Workspace: ${entry.name} (${root.substring(0, 2)})`,
+          root,
+          'top-level AI coding project'
+        );
+        if (item) found.push(item);
       }
-    } catch (e) {
-      // Skip unreadable drive
-    }
+
+      const childEntries = (await readdirSafe(firstLevelPath)).filter(c => c.isDirectory());
+      const childItems = await mapLimit(childEntries, 4, async (child) => {
+        const childPath = path.join(firstLevelPath, child.name);
+        if (!(await isGenuineAIProject(childPath))) return null;
+        return buildProjectItem(
+          childPath,
+          `secondary-${root.charAt(0)}-${entry.name}-${child.name}`,
+          `AI Project: ${entry.name}/${child.name} (${root.substring(0, 2)})`,
+          root,
+          'AI coding project'
+        );
+      });
+
+      for (const item of childItems) if (item) found.push(item);
+      return found;
+    });
+
+    for (const group of perTop) items.push(...group);
   }
 
   return items;
@@ -408,15 +433,77 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       impactDescription: 'Cached PyTorch model weights and neural network checkpoints.',
       safeReason: 'PyTorch hub cache directory.'
     },
+    // --- Package-manager caches -------------------------------------------
+    //
+    // These are the CACHES of general-purpose toolchains, not the toolchains
+    // themselves. Node and Python are deliberately NOT listed as removable
+    // software: they are general-purpose runtimes, removing one breaks far more
+    // than AI work, and there is no honest "safe" tier for a language runtime.
+    // Their download caches are a different matter — every AI tool, MCP server
+    // and agent pulls packages through them, they re-download on demand, and
+    // they are routinely the largest reclaimable thing on a developer's disk.
     {
       id: 'pip-cache',
-      name: 'Pip Python AI Package Cache (C:)',
+      name: 'pip download cache',
       category: 'Ollama' as const,
-      path: path.join(homeDir, '.cache', 'pip'),
-      tier: 'YELLOW' as SafetyTier,
+      // Windows keeps this at %LOCALAPPDATA%\pip\Cache. The previous entry only
+      // checked the Linux/macOS path (~/.cache/pip), so on Windows — the app's
+      // only supported platform — it never matched.
+      path: isWindows ? path.join(localAppData, 'pip', 'Cache') : path.join(homeDir, '.cache', 'pip'),
+      tier: 'GREEN' as SafetyTier,
       canDelete: true,
-      impactDescription: 'Downloaded Python AI packages, wheel caches, and build binaries.',
-      safeReason: 'Python pip package cache directory.'
+      impactDescription: 'Downloaded Python wheels and build artifacts. pip re-downloads on demand.',
+      safeReason: 'Safe to delete. A download cache only — pip refetches anything it needs. No installed package is affected.'
+    },
+    {
+      id: 'npm-cache',
+      name: 'npm download cache',
+      category: 'VS Code Extension' as const,
+      path: isWindows ? path.join(localAppData, 'npm-cache') : path.join(homeDir, '.npm', '_cacache'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Tarballs npm has downloaded. Rebuilt automatically on the next install.',
+      safeReason: 'Safe to delete. A content-addressable download cache — npm refetches as needed. Installed node_modules are untouched.'
+    },
+    {
+      id: 'npm-cacache-home',
+      name: 'npm cache (home)',
+      category: 'VS Code Extension' as const,
+      path: path.join(homeDir, '.npm', '_cacache'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Secondary npm content cache in the home directory.',
+      safeReason: 'Safe to delete. Download cache only; npm rebuilds it.'
+    },
+    {
+      id: 'bun-cache',
+      name: 'Bun install cache',
+      category: 'VS Code Extension' as const,
+      path: path.join(homeDir, '.bun', 'install', 'cache'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Packages Bun has downloaded. Refetched on the next install.',
+      safeReason: 'Safe to delete. Download cache only — Bun refetches on demand.'
+    },
+    {
+      id: 'yarn-cache',
+      name: 'Yarn download cache',
+      category: 'VS Code Extension' as const,
+      path: isWindows ? path.join(localAppData, 'Yarn', 'Cache') : path.join(homeDir, '.cache', 'yarn'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Packages Yarn has downloaded.',
+      safeReason: 'Safe to delete. Download cache only — Yarn refetches on demand.'
+    },
+    {
+      id: 'uv-cache',
+      name: 'uv Python cache',
+      category: 'Ollama' as const,
+      path: isWindows ? path.join(localAppData, 'uv', 'cache') : path.join(homeDir, '.cache', 'uv'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Wheels and source distributions cached by uv.',
+      safeReason: 'Safe to delete. Download cache only — uv refetches on demand.'
     },
     {
       id: 'continue-dev-root',
@@ -460,27 +547,30 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
     }
   ];
 
-  for (const def of scanDefinitions) {
-    if (fs.existsSync(def.path)) {
-      const size = getDirectorySize(def.path);
-      const stat = fs.statSync(def.path);
-      targets.push({
-        id: def.id,
-        name: def.name,
-        category: def.category,
-        path: def.path,
-        sizeBytes: size,
-        formattedSize: formatBytes(size),
-        tier: def.tier,
-        canDelete: def.canDelete,
-        impactDescription: def.impactDescription,
-        lastModified: stat.mtime.toISOString().split('T')[0],
-        safeReason: def.safeReason
-      });
-    }
-  }
+  const scanned = await mapLimit(scanDefinitions, 4, async (def) => {
+    const stat = await statSafe(def.path);
+    if (!stat) return null;
 
-  const secondaryItems = scanSecondaryDrives();
+    const size = await getDirectorySize(def.path);
+    const item: AICacheItem = {
+      id: def.id,
+      name: def.name,
+      category: def.category,
+      path: def.path,
+      sizeBytes: size,
+      formattedSize: formatBytes(size),
+      tier: def.tier,
+      canDelete: def.canDelete,
+      impactDescription: def.impactDescription,
+      lastModified: stat.mtime.toISOString().split('T')[0],
+      safeReason: def.safeReason
+    };
+    return item;
+  });
+
+  for (const item of scanned) if (item) targets.push(item);
+
+  const secondaryItems = await scanSecondaryDrives();
   for (const item of secondaryItems) {
     if (!targets.some(t => t.path.toLowerCase() === item.path.toLowerCase())) {
       targets.push(item);

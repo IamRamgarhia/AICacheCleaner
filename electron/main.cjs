@@ -1,5 +1,6 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, utilityProcess } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 // Enforce Windows Single-Instance Lock (Standard Windows software rule: focuses existing instance, prevents duplicate port errors)
 const gotTheLock = app.requestSingleInstanceLock();
@@ -21,14 +22,55 @@ if (!gotTheLock) {
     console.log('[Main Process Background Notice]:', err.message);
   });
 
-  // Launch bundled Express backend directly inside Electron Node engine (Zero external process spawning)
-  try {
-    const serverPath = path.join(__dirname, '..', 'dist', 'server.cjs');
-    require(serverPath);
-    console.log('[Backend] Express Local Engine API started successfully in Electron process.');
-  } catch (err) {
-    console.error('[Backend Load Error]:', err);
+  const serverPath = path.join(__dirname, '..', 'dist', 'server.cjs');
+  let backendProcess = null;
+
+  // Run the Express backend in a utilityProcess rather than inside the main
+  // process. Scanning touches tens of GB of disk; even now that the walk is
+  // async, keeping it off the main process guarantees window painting, resizing
+  // and closing can never be delayed by backend work.
+  function startBackend() {
+    if (!fs.existsSync(serverPath)) {
+      console.error('[Backend] Bundled server not found at', serverPath);
+      return;
+    }
+
+    try {
+      backendProcess = utilityProcess.fork(serverPath, [], {
+        serviceName: 'AICacheCleanerBackend',
+        stdio: 'pipe'
+      });
+
+      backendProcess.stdout?.on('data', (d) => process.stdout.write(`[Backend] ${d}`));
+      backendProcess.stderr?.on('data', (d) => process.stderr.write(`[Backend] ${d}`));
+
+      backendProcess.on('exit', (code) => {
+        console.log(`[Backend] Local Engine API exited with code ${code}.`);
+        backendProcess = null;
+      });
+
+      console.log('[Backend] Express Local Engine API started in a utility process.');
+    } catch (err) {
+      // Falling back in-process keeps the app usable if utilityProcess is
+      // unavailable; the async scanner means this no longer freezes the UI.
+      console.error('[Backend] utilityProcess failed, falling back in-process:', err);
+      try {
+        require(serverPath);
+      } catch (fallbackErr) {
+        console.error('[Backend Load Error]:', fallbackErr);
+      }
+    }
   }
+
+  function stopBackend() {
+    if (backendProcess) {
+      try { backendProcess.kill(); } catch (e) { /* already gone */ }
+      backendProcess = null;
+    }
+  }
+
+  app.on('before-quit', stopBackend);
+  app.on('will-quit', stopBackend);
 
   function createWindow() {
     Menu.setApplicationMenu(null); // Clean frameless menu bar for modern UI
@@ -64,6 +106,8 @@ if (!gotTheLock) {
   }
 
   app.on('ready', () => {
+    // utilityProcess.fork is only valid once the app is ready.
+    startBackend();
     createWindow();
   });
 

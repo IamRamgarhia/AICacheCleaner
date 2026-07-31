@@ -33,7 +33,7 @@
   </tr>
 </table>
 
-> *Illustrative mockups — capture the real app and overwrite the files in [`screenshots/`](screenshots) to make them live.*
+> **Note:** the images above are illustrative mockups, not captures of the current build. The UI has since been redesigned. Replace the files in [`screenshots/`](screenshots) with real captures before publishing.
 
 ---
 
@@ -76,7 +76,11 @@ AICacheCleaner detects and cleans caches for these tools. GREEN = 100% safe to d
 | **LM Studio** | `~/.cache/lm-studio` (GGUF models) | 🟡 YELLOW |
 | **Jan.ai** | `%AppData%\Jan` (local model files) | 🟡 YELLOW |
 | **AnythingLLM** | `%AppData%\AnythingLLM` (vector DB, embeddings) | 🟡 YELLOW |
-| **pip** | `~/.cache/pip` (Python AI package wheels) | 🟡 YELLOW |
+| **pip / npm / Bun / Yarn / uv** | Package download caches (`%LOCALAPPDATA%
+pm-cache`, `~/.bun`, …) | 🟢 GREEN |
+| **Codex, OpenCode, agents** | Discovered automatically by directory signature | 🟡 YELLOW |
+
+Beyond the fixed list above, AICacheCleaner **discovers** AI tool directories across your home folder, `%APPDATA%`, `%LOCALAPPDATA%` and `Program Files` by matching vendor signatures — so tools it has never heard of still show up with their real disk usage.
 
 ---
 
@@ -101,8 +105,10 @@ AICacheCleaner detects and cleans caches for these tools. GREEN = 100% safe to d
 ### 1. 🔍 Non-Overlapping AI Storage Detector
 Scans all drives (`C:`, `D:`, `E:`, `F:`, external) for active AI project footprints, model weights, and prompt caches. Uses **ancestor-descendant path deduplication** so nested subfolders are never double-counted.
 
-### 2. 🛡️ Automatic Safety Restore Points
-Before any cache is removed, AICacheCleaner records a lightweight safety snapshot of what will be cleaned. Items are then soft-deleted to the **OS Recycle Bin / Trash**, so recovery is always one click away.
+### 2. 🛡️ Restore Points With Real One-Click Recovery
+Before anything is removed, AICacheCleaner writes a record of exactly what will be cleaned and from where. Items are soft-deleted to the **Windows Recycle Bin** — and the Restore Points screen moves them back out of it automatically, to their original location or a folder you choose. You never have to dig through the Recycle Bin by hand.
+
+*Automatic restore is currently Windows-only; on other platforms the record is still written but recovery is manual.*
 
 ### 3. 🖥️ Windows Native Uninstaller Integration
 Triggers the official Windows Add/Remove Programs panel (`appwiz.cpl` / `ms-settings:appsfeatures`) after creating a safety snapshot, for clean software uninstallation.
@@ -138,7 +144,7 @@ Generic cleaners like **CCleaner** and **BleachBit** are great for browser and s
 
 ## 📊 Real-World Impact — How Much Space Can You Reclaim?
 
-The numbers below are **illustrative examples** of what a typical AI-heavy developer's machine accumulates over a few months of daily use. Actual figures depend on your tools and usage.
+> ⚠️ **The numbers below are illustrative examples, not measured results.** They describe the kind of accumulation a heavy AI user might see. Your actual figures depend entirely on which tools you run. Run a scan to see your own.
 
 | What was cleaned | Tool | Space reclaimed | Why it grew so big |
 |---|---|---|---|
@@ -149,15 +155,6 @@ The numbers below are **illustrative examples** of what a typical AI-heavy devel
 | HuggingFace + PyTorch checkpoints | HF / Torch | **9.8 GB** | Auto-downloaded weights, never removed |
 | **Total reclaimed in one pass** | — | **~47 GB** | — |
 
-### 👥 What users say
-
-> *"I had no idea Claude Desktop was quietly hoarding 13 GB of cache on my C: drive. AICacheCleaner found and cleared it in seconds — my drive went from red to healthy."* — AI engineer (illustrative)
-
-> *"CCleaner kept skipping my Cursor and Ollama folders because it didn't recognize them. This is the first tool that actually understands AI tool clutter."* — Full-stack dev (illustrative)
-
-> *"Finally freed up C: drive space without risking my chat history. The safety tiers mean I trust what it's deleting."* — Indie developer (illustrative)
-
-*(Quotes are representative of the typical use case, not from specific named users.)*
 
 ---
 
