@@ -25,3 +25,6 @@ dist-electron/
 Thumbs.db
 .vscode/
 .idea/
+
+# AI coding-tool session artifacts
+.zcode/

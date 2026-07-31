@@ -1,171 +1,175 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { AICacheItem } from '../types';
-import { AlertTriangle, ShieldCheck, Trash2, X, FolderOpen, CheckCircle2 } from 'lucide-react';
+import { X, ShieldAlert, FolderTree } from 'lucide-react';
 
 interface PreDeleteModalProps {
   isOpen: boolean;
   itemsToClean: AICacheItem[];
+  restorePointPolicy?: 'PROMPT' | 'ALWAYS' | 'NEVER';
   onConfirmClean: (createRestorePoint: boolean) => void;
   onCancel: () => void;
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes < 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(i >= 3 ? 2 : 1))} ${units[i]}`;
 }
 
 export const PreDeleteModal: React.FC<PreDeleteModalProps> = ({
   isOpen,
   itemsToClean,
+  restorePointPolicy = 'PROMPT',
   onConfirmClean,
   onCancel
 }) => {
   const [createRestorePoint, setCreateRestorePoint] = useState<boolean>(true);
+  const [ackUserData, setAckUserData] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setAckUserData(false);
+      setCreateRestorePoint(restorePointPolicy !== 'NEVER');
+    }
+  }, [isOpen, restorePointPolicy]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onCancel]);
 
   if (!isOpen) return null;
 
   const totalBytes = itemsToClean.reduce((acc, i) => acc + i.sizeBytes, 0);
 
-  const formatBytesLocal = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+  // YELLOW/RED hold real user data — chat databases, session keys, model
+  // weights. Deleting them is allowed but must be deliberate.
+  const userDataItems = itemsToClean.filter(i => i.tier === 'YELLOW' || i.tier === 'RED');
+
+  // Warn when one selection lives inside another: deleting the parent takes the
+  // child too, so the itemised list understates what is actually removed.
+  const enclosedPairs: { parent: string; child: string }[] = [];
+  for (const outer of itemsToClean) {
+    const outerKey = outer.path.toLowerCase().replace(/[\\/]+$/, '');
+    for (const inner of itemsToClean) {
+      if (inner.id === outer.id) continue;
+      const innerKey = inner.path.toLowerCase();
+      if (innerKey.startsWith(outerKey + '\\') || innerKey.startsWith(outerKey + '/')) {
+        enclosedPairs.push({ parent: outer.name, child: inner.name });
+      }
+    }
+  }
+
+  const confirmBlocked = userDataItems.length > 0 && !ackUserData;
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0, 0, 0, 0.75)',
-      backdropFilter: 'blur(8px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 3000,
-      padding: '20px'
-    }}>
-      <div className="glass-card" style={{ maxWidth: '580px', width: '100%', padding: '24px', border: '1px solid var(--border-glow)', borderRadius: '20px' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+    <div className="ins-overlay ins-scope" role="dialog" aria-modal="true" aria-label="Confirm cleanup">
+      <div className="ins-modal">
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--ins-space-3)' }}>
           <div>
-            <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertTriangle size={22} color="#fbbf24" /> Pre-Deletion Safety Confirmation
-            </h3>
-            <p style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '2px' }}>
-              You are about to clean <strong style={{ color: '#00f2fe' }}>{itemsToClean.length} items</strong> (<strong style={{ color: '#34d399' }}>{formatBytesLocal(totalBytes)}</strong>).
-            </p>
+            <h2 className="ins-h1" style={{ fontSize: '1.125rem' }}>
+              Reclaim {formatBytes(totalBytes)}
+            </h2>
+            <span className="ins-meta">
+              {itemsToClean.length} {itemsToClean.length === 1 ? 'location' : 'locations'} → Recycle Bin
+            </span>
           </div>
-
-          <button onClick={onCancel} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}>
-            <X size={20} />
+          <button className="ins-btn ins-btn--quiet" onClick={onCancel} aria-label="Close">
+            <X size={16} />
           </button>
         </div>
 
-        {/* ITEMIZED SHORT LIST OF FILES BEING DELETED */}
-        <div style={{ marginBottom: '18px' }}>
-          <label style={{ fontSize: '0.78rem', color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '8px' }}>
-            Items Selected for Cleanup ({itemsToClean.length}):
-          </label>
+        <div>
+          <span className="ins-label" style={{ display: 'block', marginBottom: 'var(--ins-space-2)' }}>
+            What will be moved
+          </span>
+          <div className="ins-well" style={{ maxHeight: '150px', overflowY: 'auto', padding: 0 }}>
+            <table className="ins-table">
+              <tbody>
+                {itemsToClean.map(item => (
+                  <tr key={item.id}>
+                    <td style={{ paddingLeft: 'var(--ins-space-3)' }}>
+                      <div style={{ color: 'var(--ins-mist-50)', fontSize: '0.75rem' }}>{item.name}</div>
+                      <span className="ins-data" style={{ fontSize: '0.6875rem', color: 'var(--ins-mist-500)' }}>
+                        {item.path}
+                      </span>
+                    </td>
+                    <td className="ins-num ins-data" style={{ width: '80px', fontSize: '0.75rem' }}>
+                      {item.formattedSize}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-          <div style={{
-            maxHeight: '160px',
-            overflowY: 'auto',
-            background: 'rgba(0, 0, 0, 0.4)',
-            borderRadius: '10px',
-            padding: '10px',
-            border: '1px solid var(--border-color)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px'
-          }}>
-            {itemsToClean.map(item => (
-              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', background: 'rgba(255, 255, 255, 0.03)', padding: '8px 10px', borderRadius: '6px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                  <CheckCircle2 size={14} color="#34d399" style={{ flexShrink: 0 }} />
-                  <span style={{ color: '#fff', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    [{item.category}] {item.name}
-                  </span>
-                </div>
-                <span style={{ color: '#34d399', fontWeight: 700, fontFamily: 'monospace', flexShrink: 0, marginLeft: '8px' }}>
-                  {item.formattedSize}
+        {enclosedPairs.length > 0 && (
+          <div className="ins-note ins-note--warn" style={{ alignItems: 'flex-start' }}>
+            <FolderTree size={15} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <span>
+              {enclosedPairs.slice(0, 2).map((p, i) => (
+                <span key={i} style={{ display: 'block' }}>
+                  “{p.parent}” already contains “{p.child}”.
                 </span>
-              </div>
-            ))}
+              ))}
+              Removing the parent removes the nested folder with it.
+            </span>
           </div>
-        </div>
+        )}
 
-        {/* RESTORE POINT CHOICE */}
-        <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '16px', borderRadius: '12px', marginBottom: '20px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
-          <strong style={{ fontSize: '0.88rem', color: '#fff', display: 'block', marginBottom: '10px' }}>
-            Would you like to create a Safety Restore Point before deleting?
-          </strong>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <label style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '12px',
-              background: createRestorePoint ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
-              border: createRestorePoint ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid var(--border-color)',
-              borderRadius: '10px',
-              fontSize: '0.85rem',
-              color: '#fff',
-              cursor: 'pointer'
-            }}>
-              <input
-                type="radio"
-                name="restorePoint"
-                checked={createRestorePoint}
-                onChange={() => setCreateRestorePoint(true)}
-              />
-              <ShieldCheck size={18} color="#34d399" />
-              <span>
-                <strong style={{ color: '#34d399' }}>Yes, Create Safety Restore Point</strong> (Recommended — Allows 1-click restore anytime)
-              </span>
-            </label>
-
-            <label style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '12px',
-              background: !createRestorePoint ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
-              border: !createRestorePoint ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--border-color)',
-              borderRadius: '10px',
-              fontSize: '0.85rem',
-              color: '#d1d5db',
-              cursor: 'pointer'
-            }}>
-              <input
-                type="radio"
-                name="restorePoint"
-                checked={!createRestorePoint}
-                onChange={() => setCreateRestorePoint(false)}
-              />
-              <Trash2 size={16} color="#f87171" />
-              <span>No, Soft-Delete Directly to Windows Recycle Bin</span>
+        {userDataItems.length > 0 && (
+          <div
+            className="ins-note ins-note--error"
+            style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 'var(--ins-space-2)' }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+              <ShieldAlert size={15} /> {userDataItems.length} of these hold your data, not cache
+            </span>
+            <span style={{ color: 'var(--ins-mist-300)' }}>
+              These can contain chat history, session keys, MCP configs, vector indexes or downloaded model
+              weights. They do not rebuild themselves — recovery depends on your Recycle Bin.
+            </span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--ins-mist-50)' }}>
+              <input type="checkbox" checked={ackUserData} onChange={e => setAckUserData(e.target.checked)} />
+              I understand, continue anyway
             </label>
           </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--ins-space-2)' }}>
+          <label className={`ins-choice${createRestorePoint ? ' ins-choice--on' : ''}`}>
+            <input type="radio" name="restorePoint" checked={createRestorePoint} onChange={() => setCreateRestorePoint(true)} />
+            <span>
+              <strong style={{ display: 'block', color: 'var(--ins-mist-50)' }}>Record a restore point first</strong>
+              <span className="ins-meta">Writes down exactly what was removed and from where.</span>
+            </span>
+          </label>
+          <label className={`ins-choice${!createRestorePoint ? ' ins-choice--on' : ''}`}>
+            <input type="radio" name="restorePoint" checked={!createRestorePoint} onChange={() => setCreateRestorePoint(false)} />
+            <span>
+              <strong style={{ display: 'block', color: 'var(--ins-mist-50)' }}>Skip the record</strong>
+              <span className="ins-meta">Items still go to the Recycle Bin, just without a written list.</span>
+            </span>
+          </label>
         </div>
 
-        {/* Buttons */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-          <button className="btn-secondary" onClick={onCancel} style={{ padding: '10px 18px' }}>
+        <div style={{ display: 'flex', gap: 'var(--ins-space-2)', justifyContent: 'flex-end' }}>
+          <button className="ins-btn ins-btn--quiet" onClick={onCancel}>
             Cancel
           </button>
-
           <button
-            className="btn-primary"
+            className="ins-btn ins-btn--primary"
+            disabled={confirmBlocked}
             onClick={() => onConfirmClean(createRestorePoint)}
-            style={{
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              boxShadow: '0 4px 15px rgba(16, 185, 129, 0.4)',
-              padding: '10px 22px',
-              fontWeight: 800
-            }}
+            title={confirmBlocked ? 'Acknowledge the warning above to continue' : undefined}
           >
-            Confirm & Clean {itemsToClean.length} Items
+            Move {itemsToClean.length} to Recycle Bin
           </button>
         </div>
       </div>

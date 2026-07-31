@@ -1,22 +1,45 @@
-import React, { useState } from 'react';
-import { Package, ArrowRight, Download, Upload, CheckCircle2, ShieldCheck, Cpu, HardDrive, Sparkles, Folder, Terminal } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Download, Upload, RefreshCw, ArrowRight, FolderOpen, CheckCircle2, AlertTriangle } from 'lucide-react';
+import type { AISoftwareAppItem } from '../types';
 
-export const MigrationWizard: React.FC = () => {
-  const [sourceApp, setSourceApp] = useState<string>('Claude Desktop');
-  const [targetApp, setTargetApp] = useState<string>('Antigravity');
-  const [exportPath, setExportPath] = useState<string>('Desktop (Default)');
+interface MigrationWizardProps {
+  detectedSoftware?: AISoftwareAppItem[];
+}
 
-  // Selected Software to Transfer
-  const [selectedTools, setSelectedTools] = useState<{ [key: string]: boolean }>({
-    Antigravity: true,
-    Cursor: true,
-    Claude: true,
-    Ollama: false,
-    VSCode: true,
-    ChatGPT: false
-  });
+/** An app the backend can read transcripts from / write transcripts for. */
+/** A project with AI conversation history attached to it. */
+interface ProjectLink {
+  projectPath: string;
+  name: string;
+  exists: boolean;
+  totalAiBytes: number;
+  totalAiFormatted: string;
+  sources: { tool: string; path: string; sizeBytes: number; formattedSize: string; entries?: number }[];
+}
 
-  // Included AI Asset Components
+interface TranscriptAppInfo {
+  id: string;
+  label: string;
+  detected: boolean;
+  readable: boolean;
+  transcriptCount: number;
+  reason?: string;
+  root: string;
+}
+
+const ASSETS: { id: string; label: string; hint: string }[] = [
+  { id: 'sourceCode', label: 'Project source', hint: 'excludes node_modules and build output' },
+  { id: 'chatTranscripts', label: 'Chat transcripts', hint: 'conversation history and agent reasoning' },
+  { id: 'vectorEmbeddings', label: 'Vector indexes', hint: 'semantic search databases' },
+  { id: 'mcpBindings', label: 'MCP server configs', hint: 'tool bindings and connectors' },
+  { id: 'systemPrompts', label: 'Prompts & commands', hint: 'custom slash commands and prompt libraries' },
+  { id: 'llmWeights', label: 'Model weights', hint: 'very large — can add tens of GB' }
+];
+
+export const MigrationWizard: React.FC<MigrationWizardProps> = ({ detectedSoftware: propSoftware }) => {
+  const [installedSoftware, setInstalledSoftware] = useState<AISoftwareAppItem[]>([]);
+  const [loadingSoftware, setLoadingSoftware] = useState<boolean>(true);
+  const [selectedSwIds, setSelectedSwIds] = useState<{ [id: string]: boolean }>({});
   const [includedAssets, setIncludedAssets] = useState<{ [key: string]: boolean }>({
     sourceCode: true,
     chatTranscripts: true,
@@ -26,273 +49,510 @@ export const MigrationWizard: React.FC = () => {
     llmWeights: false
   });
 
+  const [projectFolderPath, setProjectFolderPath] = useState<string>('');
+  const [customZipDestination, setCustomZipDestination] = useState<string>('');
   const [exporting, setExporting] = useState<boolean>(false);
-  const [exportSuccess, setExportSuccess] = useState<string | null>(null);
+  const [exportResult, setExportResult] = useState<{ ok: boolean; text: string; zipPath?: string } | null>(null);
+
   const [importing, setImporting] = useState<boolean>(false);
   const [importZipPath, setImportZipPath] = useState<string>('');
-  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [importExtractPath, setImportExtractPath] = useState<string>('');
+  const [importResult, setImportResult] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const toggleTool = (tool: string) => {
-    setSelectedTools(prev => ({ ...prev, [tool]: !prev[tool] }));
+  const [sourceApp, setSourceApp] = useState<string>('');
+  const [targetApp, setTargetApp] = useState<string>('');
+  const [convertMsg, setConvertMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [converting, setConverting] = useState<boolean>(false);
+  const [transcriptApps, setTranscriptApps] = useState<TranscriptAppInfo[]>([]);
+  const [transcriptAppsLoaded, setTranscriptAppsLoaded] = useState<boolean>(false);
+
+  // --- Project-first export state ---
+  const [projects, setProjects] = useState<ProjectLink[]>([]);
+  const [unlinkable, setUnlinkable] = useState<{ tool: string; reason: string }[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState<boolean>(false);
+  const [selectedProject, setSelectedProject] = useState<string>('');
+  const [includeCode, setIncludeCode] = useState<boolean>(true);
+  const [exportingProject, setExportingProject] = useState<boolean>(false);
+  const [projectResult, setProjectResult] = useState<{ ok: boolean; text: string; zipPath?: string } | null>(null);
+
+  const activeProject = projects.find(p => p.projectPath === selectedProject) || null;
+
+  const fetchProjects = async () => {
+    setLoadingProjects(true);
+    try {
+      const res = await fetch('http://127.0.0.1:3333/api/projects');
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(data.projects || []);
+        setUnlinkable(data.unlinkable || []);
+        if (!selectedProject && data.projects?.length) setSelectedProject(data.projects[0].projectPath);
+      }
+    } catch (e) {
+      console.warn('Could not list projects:', (e as Error).message);
+    } finally {
+      setLoadingProjects(false);
+    }
   };
 
-  const toggleAsset = (asset: string) => {
-    setIncludedAssets(prev => ({ ...prev, [asset]: !prev[asset] }));
+  const handleExportProject = async () => {
+    setExportingProject(true);
+    setProjectResult(null);
+    try {
+      const res = await fetch('http://127.0.0.1:3333/api/export-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath: selectedProject, includeCode })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProjectResult({
+          ok: true,
+          text: `Packaged ${data.totalFiles} file(s)${data.includedTools.length ? ` plus history from ${data.includedTools.join(', ')}` : ''} — ${data.formattedSize}.`,
+          zipPath: data.zipPath
+        });
+      } else {
+        setProjectResult({ ok: false, text: data.error || 'Export failed.' });
+      }
+    } catch (e) {
+      setProjectResult({ ok: false, text: `Export failed: ${(e as Error).message}` });
+    } finally {
+      setExportingProject(false);
+    }
   };
+
+  const fetchInstalledSoftware = async () => {
+    setLoadingSoftware(true);
+    try {
+      const res = await fetch('http://127.0.0.1:3333/api/software');
+      if (res.ok) {
+        const data = await res.json();
+        const list: AISoftwareAppItem[] = data.software || [];
+        const installed = list.filter(s => s.status !== 'NOT INSTALLED' || s.totalDiskSizeBytes > 0);
+        setInstalledSoftware(installed);
+        const initial: { [id: string]: boolean } = {};
+        installed.forEach(s => (initial[s.id] = true));
+        setSelectedSwIds(initial);
+      }
+    } catch (e) {
+      if (propSoftware?.length) setInstalledSoftware(propSoftware);
+    } finally {
+      setLoadingSoftware(false);
+    }
+  };
+
+  const fetchTranscriptApps = async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:3333/api/transcript-apps');
+      if (res.ok) {
+        const data = await res.json();
+        const apps: TranscriptAppInfo[] = data.apps || [];
+        setTranscriptApps(apps);
+        const readable = apps.filter(a => a.readable);
+        if (readable.length > 0) setSourceApp(readable[0].id);
+        const other = apps.find(a => a.id !== readable[0]?.id);
+        if (other) setTargetApp(other.id);
+      }
+    } catch (e) {
+      console.warn('Could not load transcript apps:', (e as Error).message);
+    } finally {
+      setTranscriptAppsLoaded(true);
+    }
+  };
+
+  useEffect(() => {
+    fetchInstalledSoftware();
+    fetchTranscriptApps();
+    fetchProjects();
+  }, []);
+
+  const readableApps = transcriptApps.filter(a => a.readable);
+  const detectedApps = transcriptApps.filter(a => a.detected);
+  const targetOptions = transcriptApps.filter(a => a.id !== sourceApp);
 
   const handleExportVault = async () => {
     setExporting(true);
-    setExportSuccess(null);
+    setExportResult(null);
     try {
-      const response = await fetch('http://127.0.0.1:3333/api/export-vault', {
+      const res = await fetch('http://127.0.0.1:3333/api/export-vault', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folderPath: process.cwd() })
+        body: JSON.stringify({
+          folderPath: projectFolderPath.trim() || undefined,
+          outputZipPath: customZipDestination.trim() || undefined,
+          selectedSoftwareIds: Object.keys(selectedSwIds).filter(id => selectedSwIds[id]),
+          includedAssets
+        })
       });
-      const data = await response.json();
-      setExportSuccess(data.zipPath || 'AI Vault Zip exported successfully!');
+      const data = await res.json();
+      if (data.success) {
+        setExportResult({
+          ok: true,
+          text: `Packaged ${data.manifest?.totalFiles ?? 0} files.`,
+          zipPath: data.zipPath
+        });
+      } else {
+        setExportResult({ ok: false, text: data.error || 'Export failed.' });
+      }
     } catch (e) {
-      setExportSuccess('Vault Export Completed!');
+      setExportResult({ ok: false, text: `Export failed: ${(e as Error).message}` });
     } finally {
       setExporting(false);
     }
   };
 
   const handleImportVault = async () => {
-    if (!importZipPath) return;
+    if (!importZipPath.trim()) {
+      setImportResult({ ok: false, text: 'Enter the path to a vault .zip first.' });
+      return;
+    }
     setImporting(true);
-    setImportSuccess(null);
+    setImportResult(null);
     try {
       const res = await fetch('http://127.0.0.1:3333/api/import-vault', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vaultZipPath: importZipPath })
+        body: JSON.stringify({
+          vaultZipPath: importZipPath.trim(),
+          destinationFolder: importExtractPath.trim() || undefined
+        })
       });
       const data = await res.json();
-      if (data.success) {
-        setImportSuccess(data.message);
-      } else {
-        setImportSuccess(`Import Error: ${data.error}`);
-      }
+      setImportResult({ ok: !!data.success, text: data.message || data.error || 'Import finished.' });
     } catch (e) {
-      setImportSuccess(`Import failed: ${(e as Error).message}`);
+      setImportResult({ ok: false, text: `Import failed: ${(e as Error).message}` });
     } finally {
       setImporting(false);
     }
   };
 
+  const handleConvertTranscripts = async () => {
+    setConverting(true);
+    setConvertMsg(null);
+    try {
+      const res = await fetch('http://127.0.0.1:3333/api/convert-transcripts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceApp, targetApp })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `Server returned ${res.status}`);
+      setConvertMsg({ ok: data.converted > 0, text: data.message });
+    } catch (e) {
+      setConvertMsg({ ok: false, text: `Conversion failed: ${(e as Error).message}` });
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  const openFolder = async (folderPath?: string) => {
+    if (!folderPath) return;
+    try {
+      await fetch('http://127.0.0.1:3333/api/open-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderPath })
+      });
+    } catch (e) {
+      console.warn('Could not open folder:', (e as Error).message);
+    }
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Header Banner */}
-      <div className="glass-card" style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+    <div className="ins-page">
+      <header className="ins-page-head">
+        <div>
+          <h1 className="ins-h1">Export &amp; migrate</h1>
+          <p className="ins-sub">
+            Package your AI tools&apos; memory, configs and project code into one archive to carry to
+            another machine — or convert transcripts between tools.
+          </p>
+        </div>
+        <button className="ins-btn" onClick={fetchInstalledSoftware} disabled={loadingSoftware}>
+          <RefreshCw size={14} className={loadingSoftware ? 'spin' : ''} /> Rescan
+        </button>
+      </header>
+
+      {/* Project-first export. Archiving whole tools means packaging every
+          project you have ever touched (Antigravity alone is 22 GB here), which
+          is the wrong unit for moving one piece of work to another machine. */}
+      <div className="ins-panel" style={{ padding: 'var(--ins-space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--ins-space-4)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'var(--ins-space-3)', flexWrap: 'wrap' }}>
           <div>
-            <h2 style={{ fontSize: '1.3rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '10px', color: '#ffffff' }}>
-              <Package size={26} color="#00f2fe" /> Zero-Data-Loss AI Project & PC Migration Wizard
-            </h2>
-            <p style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '4px' }}>
-              Seamlessly transfer projects, chat histories, vector embeddings, and MCP bindings between AI tools or to a new PC.
+            <span className="ins-label">Export one project</span>
+            <p className="ins-sub" style={{ marginTop: '4px' }}>
+              Pick a project and get its code plus every AI conversation about it — from any tool that
+              records which project it was working on.
             </p>
           </div>
-
-          <span className="badge badge-green" style={{ fontSize: '0.85rem', padding: '8px 16px' }}>
-            <ShieldCheck size={14} /> 100% Zero Data Loss Guarantee
-          </span>
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
-        {/* Section 1: Select AI Software Tools to Migrate */}
-        <div className="glass-card" style={{ padding: '20px' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-            <Cpu size={18} color="#00f2fe" /> 1. Select Software Data to Transfer
-          </h3>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            {[
-              { id: 'Antigravity', label: 'Google Antigravity', desc: 'Brain & transcripts' },
-              { id: 'Cursor', label: 'Cursor AI', desc: 'Indexes & settings' },
-              { id: 'Claude', label: 'Claude Desktop', desc: 'Chat histories' },
-              { id: 'Ollama', label: 'Ollama Models', desc: 'Local LLM weights' },
-              { id: 'VSCode', label: 'VS Code AI Tools', desc: 'MCP servers & keys' },
-              { id: 'ChatGPT', label: 'ChatGPT Web', desc: 'Saved prompts' }
-            ].map(tool => (
-              <label
-                key={tool.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '12px',
-                  background: selectedTools[tool.id] ? 'rgba(0, 242, 254, 0.08)' : 'rgba(0, 0, 0, 0.2)',
-                  border: selectedTools[tool.id] ? '1px solid rgba(0, 242, 254, 0.3)' : '1px solid var(--border-color)',
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedTools[tool.id]}
-                  onChange={() => toggleTool(tool.id)}
-                />
-                <div>
-                  <strong style={{ fontSize: '0.85rem', color: '#fff', display: 'block' }}>{tool.label}</strong>
-                  <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{tool.desc}</span>
-                </div>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* Section 2: Choose Included AI Asset Types */}
-        <div className="glass-card" style={{ padding: '20px' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-            <HardDrive size={18} color="#c084fc" /> 2. Included AI Assets in Vault
-          </h3>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {[
-              { id: 'sourceCode', label: 'Source Code & Local Git Repositories' },
-              { id: 'chatTranscripts', label: '100% Chat Transcripts & Agent Reasoning Logs' },
-              { id: 'vectorEmbeddings', label: 'Vector Database Embeddings & Semantic Search Index' },
-              { id: 'mcpBindings', label: 'MCP Server Stdio Bindings & Tool Configurations' },
-              { id: 'systemPrompts', label: 'Custom System Prompts & Slash Command Libraries' },
-              { id: 'llmWeights', label: 'Ollama Local LLM Model Weights (.gguf / .bin)' }
-            ].map(asset => (
-              <label
-                key={asset.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '10px 12px',
-                  background: 'rgba(255, 255, 255, 0.02)',
-                  borderRadius: '8px',
-                  fontSize: '0.82rem',
-                  color: '#d1d5db',
-                  cursor: 'pointer'
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={includedAssets[asset.id]}
-                  onChange={() => toggleAsset(asset.id)}
-                />
-                <span>{asset.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Section 3: Export Portable Vault & Cross-App Chat Converter */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
-        {/* Export Package Card */}
-        <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <Download size={20} color="#00f2fe" /> 3. Export Portable Vault (.project-ai.zip)
-            </h3>
-            <p style={{ fontSize: '0.82rem', color: '#9ca3af', marginBottom: '16px' }}>
-              Bundles all selected project files, chat histories, and MCP tools into a compressed encrypted archive for transfer to another PC or external drive.
-            </p>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ fontSize: '0.78rem', color: '#9ca3af', display: 'block', marginBottom: '4px' }}>
-                Save Destination:
-              </label>
-              <select
-                value={exportPath}
-                onChange={(e) => setExportPath(e.target.value)}
-                style={{ width: '100%', padding: '10px', background: '#0b0f19', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '0.85rem' }}
-              >
-                <option value="Desktop (Default)">Desktop (Default: C:\Users\iamra\Desktop)</option>
-                <option value="USB External Drive">External USB Drive (D:\ or E:\)</option>
-                <option value="Custom Folder">Custom Folder Directory...</option>
-              </select>
-            </div>
-          </div>
-
-          <button
-            className="btn-primary"
-            disabled={exporting}
-            onClick={handleExportVault}
-            style={{ width: '100%', justifyContent: 'center', padding: '12px', fontSize: '0.9rem', fontWeight: 800 }}
-          >
-            <Download size={18} /> {exporting ? 'Packaging Vault Archive...' : 'Export Selected Software Vault (.project-ai.zip)'}
+          <button className="ins-btn" onClick={fetchProjects} disabled={loadingProjects}>
+            <RefreshCw size={14} className={loadingProjects ? 'spin' : ''} />
+            {loadingProjects ? 'Finding' : 'Find projects'}
           </button>
+        </div>
 
-          {exportSuccess && (
-            <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <CheckCircle2 size={16} /> Vault successfully saved to: {exportSuccess}
+        <div className="ins-grid--pair">
+          <div>
+            <label className="ins-field-label" htmlFor="projpick">
+              Projects with AI history ({projects.length})
+            </label>
+            <select
+              id="projpick"
+              className="ins-select"
+              value={selectedProject}
+              onChange={e => setSelectedProject(e.target.value)}
+              disabled={projects.length === 0}
+            >
+              {projects.length === 0 && <option value="">{loadingProjects ? 'Searching…' : 'None found yet'}</option>}
+              {projects.map(p => (
+                <option key={p.projectPath} value={p.projectPath}>
+                  {p.name} — {p.totalAiFormatted}
+                  {p.exists ? '' : ' (folder gone)'}
+                </option>
+              ))}
+            </select>
+            <span className="ins-meta" style={{ marginTop: '5px', display: 'block' }}>
+              Or paste any folder path below to look it up directly.
+            </span>
+            <input
+              className="ins-input"
+              style={{ marginTop: '6px' }}
+              type="text"
+              placeholder="D:\projects\my-app"
+              value={selectedProject}
+              onChange={e => setSelectedProject(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <span className="ins-label">What will be included</span>
+            <div className="ins-well" style={{ marginTop: '6px', minHeight: '86px' }}>
+              {activeProject ? (
+                <>
+                  {activeProject.sources.map(s => (
+                    <div key={s.path} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>
+                        {s.tool}
+                        {s.entries ? ` · ${s.entries} session(s)` : ''}
+                      </span>
+                      <span className="ins-data" style={{ color: 'var(--ins-mist-50)' }}>{s.formattedSize}</span>
+                    </div>
+                  ))}
+                  {activeProject.sources.length === 0 && <div>No linked AI history found for this folder.</div>}
+                </>
+              ) : (
+                <div>Select a project to see what would be packaged.</div>
+              )}
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', fontSize: '0.8125rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={includeCode} onChange={e => setIncludeCode(e.target.checked)} />
+              Include project source
+            </label>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--ins-space-3)', flexWrap: 'wrap' }}>
+          <button
+            className="ins-btn ins-btn--primary"
+            disabled={!selectedProject || exportingProject}
+            onClick={handleExportProject}
+          >
+            <Download size={14} /> {exportingProject ? 'Packaging…' : 'Export this project'}
+          </button>
+          {projectResult && (
+            <div className={`ins-note ${projectResult.ok ? 'ins-note--ok' : 'ins-note--error'}`} style={{ flex: 1, minWidth: '280px' }}>
+              {projectResult.ok ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
+              <span style={{ minWidth: 0 }}>{projectResult.text}</span>
+              {projectResult.zipPath && (
+                <button className="ins-btn ins-btn--quiet" style={{ marginLeft: 'auto' }} onClick={() => openFolder(projectResult.zipPath)}>
+                  <FolderOpen size={13} /> Show
+                </button>
+              )}
             </div>
           )}
         </div>
 
-        {/* Cross-App Chat Converter & Unpack Import */}
-        <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+        {unlinkable.length > 0 && (
+          <div className="ins-meta">
+            Not included: {unlinkable.map(u => `${u.tool} (${u.reason})`).join('; ')}. Use the whole-tool
+            archive below for those.
+          </div>
+        )}
+      </div>
+
+      <div className="ins-grid--pair">
+        {/* What to include */}
+        <div className="ins-card">
+          <span className="ins-label">Tools to include ({installedSoftware.length})</span>
+          {loadingSoftware ? (
+            <div className="ins-meta">Scanning…</div>
+          ) : installedSoftware.length === 0 ? (
+            <div className="ins-meta">No AI tools detected. You can still export a project folder below.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1, minHeight: 0, maxHeight: '340px', overflowY: 'auto' }}>
+              {installedSoftware.map(sw => (
+                <label key={sw.id} className={`ins-choice${selectedSwIds[sw.id] ? ' ins-choice--on' : ''}`} style={{ alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!selectedSwIds[sw.id]}
+                    onChange={() => setSelectedSwIds(prev => ({ ...prev, [sw.id]: !prev[sw.id] }))}
+                  />
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <span style={{ display: 'block', color: 'var(--ins-mist-50)' }}>{sw.name}</span>
+                    <span className="ins-meta">{sw.formattedDiskSize}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Asset categories */}
+        <div className="ins-card">
+          <span className="ins-label">Data to package</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            {ASSETS.map(asset => (
+              <label key={asset.id} className={`ins-choice${includedAssets[asset.id] ? ' ins-choice--on' : ''}`} style={{ alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={!!includedAssets[asset.id]}
+                  onChange={() => setIncludedAssets(prev => ({ ...prev, [asset.id]: !prev[asset.id] }))}
+                />
+                <span>
+                  <span style={{ display: 'block', color: 'var(--ins-mist-50)' }}>{asset.label}</span>
+                  <span className="ins-meta">{asset.hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Export */}
+      <div className="ins-panel" style={{ padding: 'var(--ins-space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--ins-space-4)' }}>
+        <span className="ins-label">Export archive</span>
+
+        <div className="ins-grid--pair">
           <div>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <ArrowRight size={20} color="#c084fc" /> 4. Cross-App Chat & Memory Converter
-            </h3>
-            <p style={{ fontSize: '0.82rem', color: '#9ca3af', marginBottom: '16px' }}>
-              Convert past chat transcripts directly between Claude, Cursor, Codex, and Antigravity without losing reasoning context.
-            </p>
+            <label className="ins-field-label" htmlFor="projfolder">Project folder (optional)</label>
+            <input id="projfolder" className="ins-input" type="text" placeholder="D:\projects\my-app" value={projectFolderPath} onChange={e => setProjectFolderPath(e.target.value)} />
+          </div>
+          <div>
+            <label className="ins-field-label" htmlFor="zipdest">Save archive to (optional)</label>
+            <input id="zipdest" className="ins-input" type="text" placeholder="Defaults to your Desktop" value={customZipDestination} onChange={e => setCustomZipDestination(e.target.value)} />
+          </div>
+        </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-              <div>
-                <label style={{ fontSize: '0.78rem', color: '#9ca3af', display: 'block', marginBottom: '4px' }}>Source App:</label>
-                <select
-                  value={sourceApp}
-                  onChange={(e) => setSourceApp(e.target.value)}
-                  style={{ width: '100%', padding: '10px', background: '#0b0f19', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '0.85rem' }}
-                >
-                  <option value="Claude Desktop">Claude Desktop</option>
-                  <option value="Cursor AI">Cursor AI</option>
-                  <option value="ChatGPT Web">ChatGPT Web</option>
-                  <option value="VS Code Copilot">VS Code Copilot</option>
-                </select>
-              </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--ins-space-3)', flexWrap: 'wrap' }}>
+          <button className="ins-btn ins-btn--primary" disabled={exporting} onClick={handleExportVault}>
+            <Download size={14} /> {exporting ? 'Packaging…' : 'Create archive'}
+          </button>
+          {exportResult && (
+            <div className={`ins-note ${exportResult.ok ? 'ins-note--ok' : 'ins-note--error'}`} style={{ flex: 1, minWidth: '260px' }}>
+              {exportResult.ok ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{exportResult.text}</span>
+              {exportResult.zipPath && (
+                <button className="ins-btn ins-btn--quiet" onClick={() => openFolder(exportResult.zipPath)} style={{ marginLeft: 'auto' }}>
+                  <FolderOpen size={13} /> Show
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
-              <div>
-                <label style={{ fontSize: '0.78rem', color: '#9ca3af', display: 'block', marginBottom: '4px' }}>Target App:</label>
-                <select
-                  value={targetApp}
-                  onChange={(e) => setTargetApp(e.target.value)}
-                  style={{ width: '100%', padding: '10px', background: '#0b0f19', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '0.85rem' }}
-                >
-                  <option value="Antigravity">Antigravity</option>
-                  <option value="Cursor AI">Cursor AI</option>
-                  <option value="Claude Code">Claude Code</option>
-                </select>
-              </div>
+      <div className="ins-grid--pair">
+        {/* Import */}
+        <div className="ins-card">
+          <span className="ins-label">Restore an archive</span>
+          <div>
+            <label className="ins-field-label" htmlFor="zippath">Archive file</label>
+            <input id="zippath" className="ins-input" type="text" placeholder="C:\Users\you\Desktop\AICacheCleaner_Vault_….zip" value={importZipPath} onChange={e => setImportZipPath(e.target.value)} />
+          </div>
+          <div>
+            <label className="ins-field-label" htmlFor="extractpath">Unpack into (optional)</label>
+            <input id="extractpath" className="ins-input" type="text" placeholder="Defaults to your Desktop" value={importExtractPath} onChange={e => setImportExtractPath(e.target.value)} />
+          </div>
+          <button className="ins-btn" disabled={importing} onClick={handleImportVault} style={{ justifyContent: 'center', marginTop: 'auto' }}>
+            <Upload size={14} /> {importing ? 'Unpacking…' : 'Unpack archive'}
+          </button>
+          {importResult && (
+            <div className={`ins-note ${importResult.ok ? 'ins-note--ok' : 'ins-note--error'}`}>{importResult.text}</div>
+          )}
+        </div>
+
+        {/* Transcript conversion */}
+        <div className="ins-card">
+          <span className="ins-label">Convert transcripts</span>
+          <p className="ins-meta" style={{ lineHeight: 1.5 }}>
+            Reads the transcripts a tool stores on this PC and rewrites them in another tool&apos;s on-disk
+            format, plus a readable Markdown copy. Only tools found here are listed.
+          </p>
+
+          {transcriptAppsLoaded && readableApps.length === 0 && (
+            <div className="ins-note ins-note--warn">
+              <AlertTriangle size={15} /> No readable transcripts found for any detected tool.
+            </div>
+          )}
+
+          {transcriptAppsLoaded && detectedApps.some(a => !a.readable) && (
+            <div className="ins-well" style={{ fontSize: '0.75rem' }}>
+              <strong style={{ color: 'var(--ins-mist-300)', display: 'block', marginBottom: '4px' }}>
+                Detected but not convertible yet
+              </strong>
+              {detectedApps
+                .filter(a => !a.readable)
+                .map(a => (
+                  <div key={a.id}>
+                    {a.label} — {a.reason}
+                  </div>
+                ))}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 'var(--ins-space-2)', alignItems: 'end' }}>
+            <div>
+              <label className="ins-field-label" htmlFor="srcapp">From</label>
+              {/* Every DETECTED tool is listed, including ones we can't read
+                  yet — with the reason on the option — so an installed tool is
+                  never silently missing from this list. */}
+              <select id="srcapp" className="ins-select" value={sourceApp} disabled={readableApps.length === 0} onChange={e => setSourceApp(e.target.value)}>
+                {readableApps.length === 0 && <option value="">No readable transcripts</option>}
+                {/* Labels stay short: a native select popup renders at the
+                    width of its longest option and escapes the card, so the
+                    full reason lives in the panel below instead. */}
+                {detectedApps.map(a => (
+                  <option key={a.id} value={a.id} disabled={!a.readable}>
+                    {a.label}
+                    {a.readable ? ` — ${a.transcriptCount}${a.transcriptCount >= 40 ? '+' : ''}` : ' — unavailable'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <ArrowRight size={14} style={{ color: 'var(--ins-mist-500)', marginBottom: '9px' }} />
+            <div>
+              <label className="ins-field-label" htmlFor="tgtapp">To</label>
+              <select id="tgtapp" className="ins-select" value={targetApp} disabled={readableApps.length === 0} onChange={e => setTargetApp(e.target.value)}>
+                {targetOptions.length === 0 && <option value="">—</option>}
+                {targetOptions.map(a => (
+                  <option key={a.id} value={a.id}>{a.label}</option>
+                ))}
+              </select>
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {exportSuccess && exportSuccess.includes('Converted') && (
-              <div style={{ padding: '8px 12px', borderRadius: '8px', background: 'rgba(157, 78, 221, 0.15)', border: '1px solid rgba(157, 78, 221, 0.3)', color: '#c084fc', fontSize: '0.8rem' }}>
-                {exportSuccess}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                className="btn-secondary"
-                onClick={() => setExportSuccess(`Selected vault imported & unpacked into ${targetApp} directory!`)}
-                style={{ flex: 1, justifyContent: 'center', padding: '12px', fontSize: '0.85rem' }}
-              >
-                <Upload size={16} /> Import & Unpack Vault
-              </button>
-              <button
-                className="btn-primary"
-                onClick={() => setExportSuccess(`Converted 14 chat transcripts from ${sourceApp} to ${targetApp} format!`)}
-                style={{ flex: 1, justifyContent: 'center', padding: '12px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #9d4edd 0%, #7b2cbf 100%)' }}
-              >
-                <Sparkles size={16} /> Convert Chats ({sourceApp} → {targetApp})
-              </button>
-            </div>
-          </div>
+          {convertMsg && (
+            <div className={`ins-note ${convertMsg.ok ? 'ins-note--ok' : 'ins-note--error'}`}>{convertMsg.text}</div>
+          )}
+
+          <button
+            className="ins-btn"
+            disabled={converting || !sourceApp || !targetApp}
+            onClick={handleConvertTranscripts}
+            style={{ justifyContent: 'center', marginTop: 'auto' }}
+          >
+            {converting ? 'Converting…' : 'Convert transcripts'}
+          </button>
         </div>
       </div>
     </div>

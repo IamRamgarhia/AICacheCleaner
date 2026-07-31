@@ -1,10 +1,10 @@
-import { AIProcessItem } from '../src/types';
-import { exec } from 'child_process';
+import type { AIProcessItem } from '../src/types';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
 import pidusage from 'pidusage';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export async function scanAIProcesses(): Promise<AIProcessItem[]> {
   const isWindows = os.platform() === 'win32';
@@ -12,7 +12,8 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
 
   try {
     if (isWindows) {
-      const { stdout } = await execAsync('tasklist /FO CSV /NH');
+      // Use execFile with discrete args (no shell) instead of a shell string.
+      const { stdout } = await execFileAsync('tasklist', ['/FO', 'CSV', '/NH']);
       const lines = stdout.split('\r\n').filter(Boolean);
 
       const candidatePids: { pid: number; name: string; memMb: number }[] = [];
@@ -28,25 +29,21 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
           const memMb = Math.round(memKb / 1024);
 
           const nameLower = name.toLowerCase();
-          const isAiDevProcess = 
+          // Tightened matching: previously bare 'py'/'code'/'cmd'/'powershell'
+          // matched virtually every terminal/editor and inflated the counts.
+          // We match the real AI tool process names instead.
+          const isAiDevProcess =
             nameLower.includes('node') ||
             nameLower.includes('python') ||
-            nameLower.includes('py') ||
             nameLower.includes('ollama') ||
             nameLower.includes('cursor') ||
             nameLower.includes('antigravity') ||
             nameLower.includes('claude') ||
             nameLower.includes('electron') ||
-            nameLower.includes('code') ||
-            nameLower.includes('rg') ||
             nameLower.includes('codex') ||
-            nameLower.includes('git') ||
             nameLower.includes('tsx') ||
             nameLower.includes('vite') ||
-            nameLower.includes('npm') ||
-            nameLower.includes('npx') ||
-            nameLower.includes('cmd') ||
-            nameLower.includes('powershell');
+            nameLower.includes('ollama');
 
           if (isAiDevProcess && pid > 0) {
             candidatePids.push({ pid, name, memMb });
@@ -54,7 +51,8 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
         }
       }
 
-      // Query real CPU metrics using pidusage
+      // Query real CPU metrics using pidusage, then clear its internal cache so
+      // a long-running server doesn't accumulate history for every PID ever seen.
       const pidsToQuery = candidatePids.slice(0, 30).map(c => c.pid);
       let realStats: { [key: number]: any } = {};
 
@@ -64,6 +62,8 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
         }
       } catch (e) {
         // Fallback to 0% CPU on query error
+      } finally {
+        try { pidusage.clear(); } catch (e) { /* noop */ }
       }
 
       for (const candidate of candidatePids) {
@@ -89,7 +89,9 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
 
         processes.push({
           pid: candidate.pid,
-          ppid: 1,
+          // tasklist CSV does not report ppid; use 0 (unknown) rather than the
+          // misleading hardcoded 1, which previously could imply "init child".
+          ppid: 0,
           name: candidate.name,
           tool: toolName,
           cpuPercent,
@@ -100,8 +102,8 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
         });
       }
     } else {
-      // macOS / Linux ps query
-      const { stdout } = await execAsync('ps -ax -o pid,ppid,%cpu,rss,command');
+      // macOS / Linux ps query (execFile, no shell)
+      const { stdout } = await execFileAsync('ps', ['-ax', '-o', 'pid,ppid,%cpu,rss,command']);
       const lines = stdout.split('\n').filter(Boolean);
 
       for (const line of lines.slice(1)) {
@@ -153,10 +155,12 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
 
 export async function killProcess(pid: number): Promise<boolean> {
   try {
+    // execFile with discrete args — no shell, so the numeric pid cannot be
+    // misinterpreted as command syntax even if the caller-side guard regresses.
     if (os.platform() === 'win32') {
-      await execAsync(`taskkill /PID ${pid} /F`);
+      await execFileAsync('taskkill', ['/PID', String(pid), '/F']);
     } else {
-      await execAsync(`kill -9 ${pid}`);
+      await execFileAsync('kill', ['-9', String(pid)]);
     }
     return true;
   } catch (e) {

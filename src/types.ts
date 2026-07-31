@@ -14,6 +14,11 @@ export type AICacheItem = {
   safeReason?: string;
   isOrphaned?: boolean;
   projectExists?: boolean;
+  // Set by the scanner when the folder actually contains a dev-server entry
+  // point (package.json, vite/next config, app.py...). Replaces the old
+  // hardcoded `path.includes('calude')` check that only ever matched the
+  // original developer's own machine.
+  isRunnableProject?: boolean;
 };
 
 export type AIProcessItem = {
@@ -34,12 +39,15 @@ export type SystemMetrics = {
   totalAIProjectsBytes: number;
   totalAIProjectsFormatted: string;
   totalAIRAMBytes: number;
+  totalAIRAMMb: number;
   totalAIRAMFormatted: string;
   reclaimableBytes: number;
   reclaimableFormatted: string;
   hygieneScore: number; // 0 - 100
   itemCount: number;
   zombieProcessCount: number;
+  activeProcessCount: number;
+  lastScanTimestamp: string;
 };
 
 export type SnapshotItem = {
@@ -50,6 +58,9 @@ export type SnapshotItem = {
   formattedSize: string;
   items: AICacheItem[];
   note?: string;
+  // Optional custom restore destination the user picked at snapshot-creation
+  // time; surfaced back to the restore flow when present.
+  restoreFolderPath?: string;
 };
 
 export type MigrationPackage = {
@@ -66,7 +77,9 @@ export type AISoftwareAppItem = {
   id: string;
   name: string;
   category: string;
-  version: string;
+  // Only set when a real version could be read from the installed app. It was
+  // previously a hardcoded string shown to users as a detected fact.
+  version?: string;
   status: 'ACTIVE IN RAM' | 'INSTALLED ON DISK' | 'LAYING ON DISK (RESIDUAL)' | 'NOT INSTALLED';
   detectionPaths: string[];
   executableName?: string;
@@ -77,5 +90,9 @@ export type AISoftwareAppItem = {
   formattedDiskSize: string;
   description: string;
   canUninstall: boolean;
+  // Real on-disk cache locations detected for this software, populated by the
+  // detector. Lets the purge flow snapshot the actual software caches instead
+  // of an empty list.
+  detectedCaches?: AICacheItem[];
 };
 

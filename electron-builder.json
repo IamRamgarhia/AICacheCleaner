@@ -2,12 +2,16 @@
   "appId": "com.dicecodes.aicachecleaner",
   "productName": "AICacheCleaner",
   "copyright": "Copyright © 2026 Dice Codes (https://dicecodes.com/)",
+  "electronVersion": "34.0.0",
   "directories": {
     "output": "dist-electron"
   },
   "files": [
     "dist/**/*",
     "electron/**/*"
+  ],
+  "asarUnpack": [
+    "node_modules/trash/**"
   ],
   "portable": {
     "artifactName": "AICacheCleaner-Portable-${version}.${ext}"

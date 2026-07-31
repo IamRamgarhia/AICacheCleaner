@@ -1,0 +1,520 @@
+/* ===========================================================================
+   AICacheCleaner design tokens — "Instrument, not dashboard"
+   ---------------------------------------------------------------------------
+   Thesis: this product answers exactly one question — "is this safe to
+   delete?" — and that answer is carried by colour. So colour is DATA here,
+   never decoration. The shell is strictly neutral; the only saturated pixels
+   on screen are the three safety tiers and the footprint strip.
+
+   The previous UI spent green, amber, cyan, purple and blue on chrome, which
+   meant a genuine amber "review this" badge competed with four decorative
+   yellows. Everything below exists to protect that one signal.
+   =========================================================================== */
+
+/* Self-hosted: the old stylesheet pulled Outfit + JetBrains Mono from
+   fonts.googleapis.com, which fails in the packaged offline app and quietly
+   contradicts the "100% local, zero data leaves your machine" guarantee. */
+@import '@fontsource-variable/ibm-plex-sans';
+@import '@fontsource/ibm-plex-sans-condensed/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+:root {
+  /* --- Neutral shell. No hue competes with the tiers. --- */
+  --ins-graphite-900: #0e1116;  /* app shell */
+  --ins-graphite-850: #12161d;  /* recessed wells */
+  --ins-graphite-800: #161a21;  /* panels */
+  --ins-graphite-750: #1c2129;  /* raised rows / hover */
+  --ins-graphite-700: #222831;  /* rules, borders */
+  /* Lifted from #6d7684: at the 11px label size that only reached ~4.0:1
+     against the panel background, short of WCAG AA for small text. */
+  --ins-mist-500:     #8b94a3;  /* tertiary text */
+  --ins-mist-300:     #a8b0bc;  /* secondary text */
+  --ins-mist-50:      #eceff3;  /* primary text */
+
+  /* --- The only chromatic values in the system. Each means something. --- */
+  --ins-safe:   #3fb98a;  /* GREEN  — rebuilds automatically, free to delete */
+  --ins-review: #d9a441;  /* AMBER  — user data, decide deliberately */
+  --ins-locked: #d96a6a;  /* RED    — do not delete */
+
+  --ins-safe-dim:   rgba(63, 185, 138, 0.14);
+  --ins-review-dim: rgba(217, 164, 65, 0.14);
+  --ins-locked-dim: rgba(217, 106, 106, 0.14);
+
+  /* --- Type. One superfamily, three roles. --- */
+  --ins-font-ui:      'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --ins-font-label:   'IBM Plex Sans Condensed', 'IBM Plex Sans Variable', ui-sans-serif, sans-serif;
+  --ins-font-data:    'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --ins-space-1: 4px;
+  --ins-space-2: 8px;
+  --ins-space-3: 12px;
+  --ins-space-4: 16px;
+  --ins-space-5: 24px;
+  --ins-space-6: 32px;
+
+  --ins-radius: 6px;
+}
+
+/* Every measurement in this app is a number in a column. Without tabular
+   figures the digits change width per row and the columns visibly jitter. */
+.ins-scope {
+  font-family: var(--ins-font-ui);
+  color: var(--ins-mist-50);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ins-scope .ins-data {
+  font-family: var(--ins-font-data);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Instrument-panel label: condensed, tracked out, quiet. */
+.ins-scope .ins-label {
+  font-family: var(--ins-font-label);
+  font-weight: 600;
+  font-size: 0.6875rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ins-mist-500);
+}
+
+.ins-scope .ins-panel {
+  background: var(--ins-graphite-800);
+  border: 1px solid var(--ins-graphite-700);
+  border-radius: var(--ins-radius);
+}
+
+/* Keyboard focus. The previous stylesheet had zero :focus rules, so keyboard
+   users had no idea where they were. */
+.ins-scope :focus-visible {
+  outline: 2px solid var(--ins-mist-300);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* --- Tier chips. Colour PLUS a word, never colour alone: green/amber/red is
+   the worst possible trio for red-green colour blindness, which is common in
+   this app's audience. --- */
+.ins-scope .ins-tier {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ins-font-label);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.ins-scope .ins-tier::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.ins-scope .ins-tier--safe   { color: var(--ins-safe);   background: var(--ins-safe-dim); }
+.ins-scope .ins-tier--review { color: var(--ins-review); background: var(--ins-review-dim); }
+.ins-scope .ins-tier--locked { color: var(--ins-locked); background: var(--ins-locked-dim); }
+
+/* --- Buttons. Flat, no gradients, no glow. One primary per screen. --- */
+.ins-scope .ins-btn {
+  font-family: var(--ins-font-ui);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 7px 14px;
+  border-radius: var(--ins-radius);
+  border: 1px solid var(--ins-graphite-700);
+  background: var(--ins-graphite-750);
+  color: var(--ins-mist-50);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.ins-scope .ins-btn:hover:not(:disabled) {
+  background: var(--ins-graphite-700);
+  border-color: var(--ins-mist-500);
+}
+.ins-scope .ins-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* The single primary action carries the SAFE tier colour, because the primary
+   action on this screen is literally "reclaim the safe caches". */
+.ins-scope .ins-btn--primary {
+  background: var(--ins-safe-dim);
+  border-color: rgba(63, 185, 138, 0.4);
+  color: var(--ins-safe);
+  font-weight: 600;
+}
+.ins-scope .ins-btn--primary:hover:not(:disabled) {
+  background: rgba(63, 185, 138, 0.22);
+  border-color: var(--ins-safe);
+}
+
+.ins-scope .ins-btn--quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ins-mist-300);
+  padding: 5px 8px;
+}
+.ins-scope .ins-btn--quiet:hover:not(:disabled) {
+  background: var(--ins-graphite-750);
+  border-color: var(--ins-graphite-700);
+  color: var(--ins-mist-50);
+}
+
+/* --- Dense data table. ~40px rows: this is a screen for scanning many rows,
+   not for admiring four of them. --- */
+.ins-scope .ins-table { width: 100%; border-collapse: collapse; }
+.ins-scope .ins-table th {
+  font-family: var(--ins-font-label);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ins-mist-500);
+  text-align: left;
+  padding: 0 var(--ins-space-3) var(--ins-space-2);
+  border-bottom: 1px solid var(--ins-graphite-700);
+}
+.ins-scope .ins-table td {
+  padding: 9px var(--ins-space-3);
+  border-bottom: 1px solid rgba(34, 40, 49, 0.6);
+  font-size: 0.8125rem;
+  vertical-align: middle;
+}
+.ins-scope .ins-table tbody tr:hover { background: var(--ins-graphite-750); }
+.ins-scope .ins-num { text-align: right; }
+
+.ins-scope .ins-path {
+  font-family: var(--ins-font-data);
+  font-size: 0.75rem;
+  color: var(--ins-mist-500);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  max-width: 46ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  text-align: left;
+}
+.ins-scope .ins-path:hover { color: var(--ins-mist-300); text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ins-scope * { transition-duration: 0.01ms !important; }
+}
+
+/* ===========================================================================
+   Primitives used across the remaining screens.
+   =========================================================================== */
+
+/* Page scaffolding ------------------------------------------------------- */
+.ins-scope .ins-page { display: flex; flex-direction: column; gap: var(--ins-space-5); }
+
+.ins-scope .ins-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--ins-space-4);
+  flex-wrap: wrap;
+}
+
+.ins-scope .ins-h1 {
+  font-family: var(--ins-font-label);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ins-mist-50);
+}
+
+.ins-scope .ins-sub {
+  font-size: 0.8125rem;
+  color: var(--ins-mist-500);
+  margin-top: 2px;
+  max-width: 72ch;
+}
+
+/* Grids must be able to shrink AND to fill.
+   · min-width:0 + minmax(min(…),100%) stops children forcing the column wider
+     than the viewport (which clipped the rightmost card and the action button).
+   · auto-FIT, not auto-fill: auto-fill keeps empty tracks alive, so a row with
+     two cards in a four-track grid left the right-hand third of every screen
+     as dead space. auto-fit collapses the empty tracks and lets the real cards
+     expand to fill the row. */
+.ins-scope .ins-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: var(--ins-space-4);
+  min-width: 0;
+  /* Stretch, not start: cards in a row then share a height and their footer
+     actions (margin-top:auto) line up instead of sitting at ragged heights. */
+  align-items: stretch;
+}
+
+/* Two-column variant for side-by-side panels that should not split further. */
+.ins-scope .ins-grid--pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+  gap: var(--ins-space-4);
+  min-width: 0;
+  align-items: stretch;
+}
+
+/* Selects must never let a long option string blow out the native popup, which
+   renders at the width of its longest option and escapes the card entirely. */
+.ins-scope .ins-select { max-width: 100%; text-overflow: ellipsis; }
+
+.ins-scope .ins-card {
+  background: var(--ins-graphite-800);
+  border: 1px solid var(--ins-graphite-700);
+  border-radius: var(--ins-radius);
+  padding: var(--ins-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ins-space-3);
+  min-width: 0;
+}
+.ins-scope .ins-card--selected { border-color: rgba(63, 185, 138, 0.45); }
+
+.ins-scope .ins-card-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ins-mist-50);
+  line-height: 1.3;
+}
+
+/* A quiet recessed well for paths, reasons, meta */
+.ins-scope .ins-well {
+  background: var(--ins-graphite-850);
+  border: 1px solid var(--ins-graphite-700);
+  border-radius: 4px;
+  padding: var(--ins-space-3);
+  font-size: 0.8125rem;
+  color: var(--ins-mist-300);
+  line-height: 1.5;
+  min-width: 0;
+}
+
+.ins-scope .ins-meta { font-size: 0.75rem; color: var(--ins-mist-500); }
+
+/* Forms ------------------------------------------------------------------ */
+.ins-scope .ins-input,
+.ins-scope .ins-select {
+  width: 100%;
+  font-family: var(--ins-font-ui);
+  font-size: 0.8125rem;
+  color: var(--ins-mist-50);
+  background: var(--ins-graphite-850);
+  border: 1px solid var(--ins-graphite-700);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+.ins-scope .ins-input:hover,
+.ins-scope .ins-select:hover { border-color: var(--ins-mist-500); }
+.ins-scope .ins-input::placeholder { color: var(--ins-mist-500); }
+.ins-scope .ins-field-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--ins-mist-300);
+  margin-bottom: 5px;
+}
+
+.ins-scope input[type='checkbox'],
+.ins-scope input[type='radio'] { accent-color: var(--ins-safe); width: 15px; height: 15px; cursor: pointer; }
+
+/* Choice rows (radios/checkboxes with a description) */
+.ins-scope .ins-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--ins-graphite-700);
+  border-radius: 4px;
+  background: var(--ins-graphite-850);
+  cursor: pointer;
+  font-size: 0.8125rem;
+}
+.ins-scope .ins-choice--on { border-color: var(--ins-mist-500); background: var(--ins-graphite-750); }
+
+/* Status messages -------------------------------------------------------- */
+.ins-scope .ins-note {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-space-2);
+  padding: 10px var(--ins-space-4);
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  border: 1px solid var(--ins-graphite-700);
+  background: var(--ins-graphite-850);
+  color: var(--ins-mist-300);
+}
+.ins-scope .ins-note--ok    { color: var(--ins-safe);   border-color: rgba(63,185,138,0.35);  background: var(--ins-safe-dim); }
+.ins-scope .ins-note--warn  { color: var(--ins-review); border-color: rgba(217,164,65,0.35);  background: var(--ins-review-dim); }
+.ins-scope .ins-note--error { color: var(--ins-locked); border-color: rgba(217,106,106,0.35); background: var(--ins-locked-dim); }
+
+/* Empty states are an invitation to act, not a shrug. */
+.ins-scope .ins-empty {
+  padding: var(--ins-space-6);
+  text-align: center;
+  color: var(--ins-mist-500);
+  font-size: 0.8125rem;
+  border: 1px dashed var(--ins-graphite-700);
+  border-radius: var(--ins-radius);
+}
+.ins-scope .ins-empty strong {
+  display: block;
+  color: var(--ins-mist-300);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+/* Modals ----------------------------------------------------------------- */
+.ins-scope .ins-overlay,
+.ins-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 8, 11, 0.72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ins-space-5);
+  z-index: 3000;
+}
+
+.ins-scope .ins-modal {
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--ins-graphite-800);
+  border: 1px solid var(--ins-graphite-700);
+  border-radius: var(--ins-radius);
+  padding: var(--ins-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ins-space-4);
+}
+
+/* Sidebar ---------------------------------------------------------------- */
+.ins-scope .ins-nav-group + .ins-nav-group { margin-top: var(--ins-space-5); }
+.ins-scope .ins-nav-group > .ins-label { display: block; padding: 0 10px var(--ins-space-2); }
+
+.ins-scope .ins-nav-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ins-mist-300);
+  font-family: var(--ins-font-ui);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.ins-scope .ins-nav-btn:hover { background: var(--ins-graphite-750); color: var(--ins-mist-50); }
+.ins-scope .ins-nav-btn.is-active {
+  background: var(--ins-graphite-750);
+  border-color: var(--ins-graphite-700);
+  color: var(--ins-mist-50);
+  font-weight: 500;
+}
+/* The active marker is a rule, not a glow. */
+.ins-scope .ins-nav-btn.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 2px;
+  height: 18px;
+  background: var(--ins-mist-50);
+  border-radius: 1px;
+}
+.ins-scope .ins-nav-btn { position: relative; }
+
+/* ===========================================================================
+   Tool identity colours.
+   ---------------------------------------------------------------------------
+   The shell stays neutral so the three safety tiers keep their meaning, but a
+   fully grey app reads as unfinished — and, more importantly, wastes an
+   opportunity: WHICH tool a row belongs to is real information, and colour
+   carries it faster than reading a label.
+
+   So colour is still data. Two independent channels, deliberately different in
+   character so they never compete:
+     · Safety   → saturated fills + a word (safe / review / locked)
+     · Identity → a quiet hue per vendor, used only as a small marker
+   Identity hues are desaturated and never used as a fill behind text, so they
+   cannot be mistaken for a safety state.
+   =========================================================================== */
+:root {
+  --ins-tool-claude:      #d08c60;  /* warm clay */
+  --ins-tool-antigravity: #6b8fd4;  /* blue */
+  --ins-tool-cursor:      #9d8ec4;  /* violet */
+  --ins-tool-ollama:      #7fb3a3;  /* sage */
+  --ins-tool-glm:         #5fa8b8;  /* teal */
+  --ins-tool-kimi:        #c47fa8;  /* magenta */
+  --ins-tool-codex:       #8fae74;  /* olive */
+  --ins-tool-openai:      #74a89a;
+  --ins-tool-huggingface: #d4a95f;  /* amber-gold */
+  --ins-tool-vscode:      #6f97c7;
+  --ins-tool-other:       #8b93a1;  /* neutral fallback */
+}
+
+/* Small square marker placed before a tool name. */
+.ins-scope .ins-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: var(--ins-tool-other);
+}
+
+/* A tinted left edge gives each card a quiet identity without adding a fill. */
+.ins-scope .ins-card--tool { border-left: 2px solid var(--ins-tool-other); }
+
+.ins-scope .ins-tool-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+/* When the identity marker is used on a card title, the title must stay a
+   block-level flex row. `.ins-tool-name` is inline-flex for use inside table
+   cells and meta lines, which made the following category text sit on the same
+   line ("AntigravityAgentic IDE · Google"). */
+.ins-scope .ins-card-title.ins-tool-name { display: flex; }
+
+/* Fixed two-column layout for pages with an even, small number of panels
+   (Settings). `auto-fit` would give three columns at desktop width and leave a
+   single orphaned card on a second row with a large gap beside it. */
+.ins-scope .ins-grid--2col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ins-space-4);
+  align-items: stretch;
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .ins-scope .ins-grid--2col { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Cards in a stretched row share the row height; push trailing actions down so
+   buttons line up across the row instead of floating at ragged heights. */
+.ins-scope .ins-grid--2col > .ins-card,
+.ins-scope .ins-grid--pair > .ins-card { height: 100%; }

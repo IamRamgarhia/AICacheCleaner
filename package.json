@@ -17,10 +17,18 @@
     "build:mac-dmg": "npm run build && npx electron-builder --mac dmg",
     "build:mac-portable": "npm run build && npx electron-builder --mac zip",
     "build:all": "npm run build && npx electron-builder --win nsis portable --mac dmg zip",
+    "typecheck:app": "tsc -p tsconfig.app.json --noEmit",
+    "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
+    "typecheck": "npm run typecheck:app && npm run typecheck:server",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "prebuild": "npm run typecheck",
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/ibm-plex-sans": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans-condensed": "^5.3.0",
     "adm-zip": "^0.5.16",
     "cors": "^2.8.5",
     "express": "^4.21.2",
@@ -51,48 +59,5 @@
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.24.1",
     "vite": "^6.2.0"
-  },
-  "build": {
-    "appId": "com.dicecodes.aicachecleaner",
-    "productName": "AICacheCleaner",
-    "electronVersion": "34.0.0",
-    "directories": {
-      "output": "dist-electron"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*"
-    ],
-    "portable": {
-      "artifactName": "AICacheCleaner-Portable-${version}.${ext}"
-    },
-    "nsis": {
-      "artifactName": "AICacheCleaner-Setup-${version}.${ext}"
-    },
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        },
-        {
-          "target": "portable",
-          "arch": ["x64"]
-        }
-      ]
-    },
-    "mac": {
-      "artifactName": "AICacheCleaner-macOS-${version}.${ext}",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": ["x64", "arm64"]
-        },
-        {
-          "target": "zip",
-          "arch": ["x64", "arm64"]
-        }
-      ]
-    }
   }
 }
