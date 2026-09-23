@@ -3,7 +3,7 @@ export type SafetyTier = 'GREEN' | 'YELLOW' | 'RED';
 export type AICacheItem = {
   id: string;
   name: string;
-  category: 'Antigravity' | 'Cursor' | 'Windsurf' | 'Claude' | 'ChatGPT' | 'Ollama' | 'HuggingFace' | 'MCP Memory' | 'Vector DB' | 'VS Code Extension';
+  category: 'Antigravity' | 'Cursor' | 'Windsurf' | 'Claude' | 'ChatGPT' | 'Ollama' | 'HuggingFace' | 'MCP Memory' | 'Vector DB' | 'VS Code Extension' | 'Dev Toolchain';
   path: string;
   sizeBytes: number;
   formattedSize: string;
@@ -19,6 +19,11 @@ export type AICacheItem = {
   // hardcoded `path.includes('calude')` check that only ever matched the
   // original developer's own machine.
   isRunnableProject?: boolean;
+  /** Id in the server-side reclaim-command allowlist, when this item is freed
+   *  by running a tool's own cleanup rather than by deleting the folder. */
+  reclaimCommandId?: string;
+  /** Days since the newest file inside changed. Undefined when unknown. */
+  idleDays?: number;
 };
 
 export type AIProcessItem = {

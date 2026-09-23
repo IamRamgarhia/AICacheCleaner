@@ -7,6 +7,7 @@ import { createSnapshot, listSnapshots, restoreSnapshot, deleteItemsSafely } fro
 import { exportProjectVault, importProjectVault, exportSingleProject } from './migrationEngine';
 import { discoverProjects, findSourcesForProject, UNLINKABLE_TOOLS } from './projectLinker';
 import { beginExport, finishExport, getExportProgress } from './exportProgress';
+import { listAvailableReclaimCommands, runReclaimCommand } from './reclaimCommands';
 import { detectInstalledAISoftware } from './softwareDetector';
 import { convertTranscripts, listAvailableTranscriptApps } from './transcriptConverter';
 import type { SystemMetrics, AICacheItem, AISoftwareAppItem } from '../src/types';
@@ -122,7 +123,37 @@ function getLocalConfig(): AppConfig {
 // ---------------------------------------------------------------------------
 const SCAN_CACHE_TTL_MS = 60_000;
 
+// Disk-backed so the scan survives restarts. Previously the cache lived only in
+// memory, so every launch re-walked tens of GB before showing anything. On boot
+// we serve the saved result immediately and refresh in the background.
+const SCAN_CACHE_FILE = path.join(os.homedir(), '.ai-cache-cleaner', 'scan-cache.json');
+const SCAN_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
 let cachedScan: { at: number; items: AICacheItem[] } | null = null;
+
+function loadScanFromDisk(): void {
+  try {
+    if (!fs.existsSync(SCAN_CACHE_FILE)) return;
+    const saved = JSON.parse(fs.readFileSync(SCAN_CACHE_FILE, 'utf-8'));
+    if (Array.isArray(saved?.items) && typeof saved.at === 'number') {
+      cachedScan = { at: saved.at, items: saved.items };
+      console.log(`[Scan] restored ${saved.items.length} items from cache`);
+    }
+  } catch {
+    // Corrupt or unreadable cache is not worth failing over — just rescan.
+  }
+}
+
+function saveScanToDisk(items: AICacheItem[]): void {
+  try {
+    fs.mkdirSync(path.dirname(SCAN_CACHE_FILE), { recursive: true });
+    const tmp = `${SCAN_CACHE_FILE}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ at: Date.now(), items }), 'utf-8');
+    fs.renameSync(tmp, SCAN_CACHE_FILE);
+  } catch (e) {
+    console.warn('[Scan] could not persist cache:', (e as Error).message);
+  }
+}
 let scanInFlight: Promise<AICacheItem[]> | null = null;
 
 // Same treatment for software detection. Discovery widened this from 13 fixed
@@ -155,12 +186,19 @@ async function getScannedItems(forceRefresh = false): Promise<AICacheItem[]> {
   if (!forceRefresh && cachedScan && Date.now() - cachedScan.at < SCAN_CACHE_TTL_MS) {
     return cachedScan.items;
   }
+  // Saved from a previous run: answer immediately and refresh in the
+  // background, so the UI is never blocked on a cold walk.
+  if (!forceRefresh && cachedScan && Date.now() - cachedScan.at < SCAN_CACHE_MAX_AGE_MS) {
+    if (!scanInFlight) void getScannedItems(true).catch(() => {});
+    return cachedScan.items;
+  }
   if (scanInFlight) return scanInFlight;
 
   scanInFlight = (async () => {
     try {
       const items = await scanAICaches();
       cachedScan = { at: Date.now(), items };
+      saveScanToDisk(items);
       return items;
     } finally {
       scanInFlight = null;
@@ -879,6 +917,31 @@ app.get('/api/export-progress', (_req, res) => {
   res.json(getExportProgress());
 });
 
+// API 15: Tool-native cleanup commands available on this machine.
+app.get('/api/reclaim-commands', async (_req, res) => {
+  try {
+    res.json({ commands: await listAvailableReclaimCommands() });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// API 16: Preview (read-only) or run one of them. The caller sends an ID only —
+// the command itself is defined server-side and never built from input.
+app.post('/api/reclaim-run', async (req, res) => {
+  try {
+    const { id, mode } = req.body;
+    if (typeof id !== 'string' || (mode !== 'preview' && mode !== 'run')) {
+      return res.status(400).json({ error: 'id and mode ("preview" | "run") are required' });
+    }
+    const result = await runReclaimCommand(id, mode);
+    if (mode === 'run') cachedScan = null;
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 // API 14b-pre: Which apps can actually take part in a transcript conversion on
 // THIS machine. The UI used to hardcode two mismatched lists that included an
 // unimplemented option and omitted supported ones.
@@ -939,6 +1002,10 @@ app.post('/api/install-native', async (_req, res) => {
 
 const server = app.listen(PORT, '127.0.0.1', () => {
   console.log(`AICacheCleaner Local Engine API running at http://127.0.0.1:${PORT}`);
+  // Serve whatever was saved last time, then warm a fresh scan in the
+  // background so the first screen the user opens is already populated.
+  loadScanFromDisk();
+  void getScannedItems(!cachedScan).catch(() => {});
 });
 
 server.on('error', (err: any) => {

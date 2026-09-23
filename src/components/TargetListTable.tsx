@@ -12,7 +12,7 @@ interface TargetListTableProps {
   loading?: boolean;
 }
 
-type Filter = 'ALL' | 'SAFE' | 'REVIEW' | 'ACTIVE' | 'STALE' | 'LARGE';
+type Filter = 'ALL' | 'SAFE' | 'REVIEW' | 'ACTIVE' | 'STALE' | 'LARGE' | 'ABANDONED';
 type SortBy = 'SIZE' | 'RECENT' | 'OLDEST' | 'NAME';
 
 export const TargetListTable: React.FC<TargetListTableProps> = ({ items, onCleanSelected, cleaning, onOpenFolder, loading }) => {
@@ -74,6 +74,7 @@ export const TargetListTable: React.FC<TargetListTableProps> = ({ items, onClean
     if (f === 'ACTIVE') return isRecentlyModified(i.lastModified);
     if (f === 'STALE') return !isRecentlyModified(i.lastModified);
     if (f === 'LARGE') return i.sizeBytes >= 1_000_000_000;
+    if (f === 'ABANDONED') return (i.idleDays ?? 0) >= 90;
     return true;
   };
 
@@ -98,7 +99,8 @@ export const TargetListTable: React.FC<TargetListTableProps> = ({ items, onClean
     { id: 'REVIEW', label: 'Your data', count: base.filter(i => passes(i, 'REVIEW')).length },
     { id: 'ACTIVE', label: `Active ${RECENT_WINDOW_DAYS}d`, count: base.filter(i => passes(i, 'ACTIVE')).length },
     { id: 'STALE', label: 'Untouched', count: base.filter(i => passes(i, 'STALE')).length },
-    { id: 'LARGE', label: 'Over 1 GB', count: base.filter(i => passes(i, 'LARGE')).length }
+    { id: 'LARGE', label: 'Over 1 GB', count: base.filter(i => passes(i, 'LARGE')).length },
+    { id: 'ABANDONED', label: 'Untouched 90d+', count: base.filter(i => passes(i, 'ABANDONED')).length }
   ];
 
   return (
@@ -229,9 +231,15 @@ export const TargetListTable: React.FC<TargetListTableProps> = ({ items, onClean
                       {item.tier === 'RED' && <span className="ins-tier ins-tier--locked">Protected</span>}
                     </td>
                     <td>
-                      <span className="ins-data ins-meta">{item.lastModified}</span>
-                      <div className="ins-meta" style={{ fontSize: '0.6875rem' }}>
-                        {recent ? 'Active' : 'Untouched'}
+                      <span className="ins-data ins-meta">
+                        {typeof item.idleDays === 'number'
+                          ? item.idleDays === 0
+                            ? 'today'
+                            : `${item.idleDays}d idle`
+                          : item.lastModified}
+                      </span>
+                      <div className="ins-meta" style={{ fontSize: '0.6875rem', color: (item.idleDays ?? 0) >= 90 ? 'var(--ins-review)' : undefined }}>
+                        {(item.idleDays ?? 0) >= 90 ? 'Abandoned' : recent ? 'Active' : 'Untouched'}
                       </div>
                     </td>
                     <td className="ins-num ins-data">{item.formattedSize}</td>

@@ -40,6 +40,12 @@ export function calculateNonOverlappingSize(items: AICacheItem[]): number {
   return totalBytes;
 }
 
+/** Days since the newest file inside a directory was written. */
+export function idleDaysFor(newestMtimeMs: number): number | undefined {
+  if (!newestMtimeMs) return undefined;
+  return Math.max(0, Math.round((Date.now() - newestMtimeMs) / 86_400_000));
+}
+
 // Breadth-first, bounded-concurrency directory size calculation.
 //
 // This was previously a synchronous readdirSync/statSync walk. Because the
@@ -49,10 +55,22 @@ export function calculateNonOverlappingSize(items: AICacheItem[]): number {
 // stopped responding. Every await below is a yield point, so the server stays
 // responsive while the disk work happens.
 export async function getDirectorySize(dirPath: string): Promise<number> {
-  const rootStat = await statSafe(dirPath);
-  if (!rootStat) return 0;
-  if (!rootStat.isDirectory()) return rootStat.size;
+  return (await measureDirectory(dirPath)).bytes;
+}
 
+/**
+ * Size AND newest-file timestamp in one walk.
+ *
+ * The newest mtime is what tells you a folder is abandoned. A directory's own
+ * mtime does not change when a file several levels down is edited, so the
+ * folder timestamp alone is worthless for staleness.
+ */
+export async function measureDirectory(dirPath: string): Promise<{ bytes: number; newestMtimeMs: number }> {
+  const rootStat = await statSafe(dirPath);
+  if (!rootStat) return { bytes: 0, newestMtimeMs: 0 };
+  if (!rootStat.isDirectory()) return { bytes: rootStat.size, newestMtimeMs: rootStat.mtimeMs };
+
+  let newestMtimeMs = 0;
   let totalSize = 0;
   let frontier: string[] = [dirPath];
 
@@ -72,20 +90,26 @@ export async function getDirectorySize(dirPath: string): Promise<number> {
 
       const stats = await mapLimit(filePaths, IO_CONCURRENCY, statSafe);
       let size = 0;
-      for (const s of stats) if (s) size += s.size;
+      let newest = 0;
+      for (const s of stats) {
+        if (!s) continue;
+        size += s.size;
+        if (s.mtimeMs > newest) newest = s.mtimeMs;
+      }
 
-      return { size, childDirs };
+      return { size, childDirs, newest };
     });
 
     const nextFrontier: string[] = [];
     for (const result of levelResults) {
       totalSize += result.size;
+      if (result.newest > newestMtimeMs) newestMtimeMs = result.newest;
       nextFrontier.push(...result.childDirs);
     }
     frontier = nextFrontier;
   }
 
-  return totalSize;
+  return { bytes: totalSize, newestMtimeMs };
 }
 
 // File extensions that mark a directory as a downloaded-media folder rather
@@ -544,14 +568,150 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       canDelete: true,
       impactDescription: 'AnythingLLM local vector database, document embeddings, and chat history.',
       safeReason: 'AnythingLLM local vector database.'
-    }
+    },
+    // --- Temp & system caches ------------------------------------------------
+    //
+    // Not AI-specific, but they sit in the same profile and are pure waste. All
+    // GREEN: the OS and each app recreate them on demand.
+    {
+      id: 'user-temp',
+      name: 'Temporary files (your account)',
+      category: 'Dev Toolchain' as const,
+      path: path.join(localAppData, 'Temp'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Installer leftovers, extracted archives and scratch files from every app you run.',
+      safeReason: 'Safe to delete. Files still open are skipped automatically; everything else is scratch space.'
+    },
+    {
+      id: 'windows-temp',
+      name: 'Temporary files (system)',
+      category: 'Dev Toolchain' as const,
+      path: path.join(process.env.SystemRoot || 'C:\\Windows', 'Temp'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'System-wide scratch files.',
+      safeReason: 'Safe to delete. Recreated as needed; in-use files are skipped.'
+    },
+    {
+      id: 'windows-update-cache',
+      name: 'Windows Update download cache',
+      category: 'Dev Toolchain' as const,
+      path: path.join(process.env.SystemRoot || 'C:\\Windows', 'SoftwareDistribution', 'Download'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Installers for updates already applied.',
+      safeReason: 'Safe to delete. Windows re-downloads anything it still needs.'
+    },
+    {
+      id: 'crash-dumps',
+      name: 'Application crash dumps',
+      category: 'Dev Toolchain' as const,
+      path: path.join(localAppData, 'CrashDumps'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Memory dumps written when an app crashed.',
+      safeReason: 'Safe to delete unless you are actively debugging a crash.'
+    },
+    {
+      id: 'thumbnail-cache',
+      name: 'Explorer thumbnail cache',
+      category: 'Dev Toolchain' as const,
+      path: path.join(localAppData, 'Microsoft', 'Windows', 'Explorer'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Cached folder thumbnails and icons.',
+      safeReason: 'Safe to delete. Explorer rebuilds thumbnails as you browse.'
+    },
+    {
+      id: 'dx-shader-cache',
+      name: 'GPU shader caches (DirectX / NVIDIA)',
+      category: 'Dev Toolchain' as const,
+      path: path.join(localAppData, 'D3DSCache'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Compiled GPU shaders.',
+      safeReason: 'Safe to delete. Recompiled automatically, at a brief one-time cost.'
+    },
+    // --- Dev toolchains -----------------------------------------------------
+    //
+    // Not AI tools, but every AI agent, MCP server and coding assistant builds
+    // on them, and their caches are routinely the largest reclaimable thing on
+    // a developer's disk. As with Node and Python, the RUNTIME is never offered
+    // for deletion — only its caches.
+    {
+      id: 'docker-wsl-disk',
+      name: 'Docker virtual disk (images, containers, volumes)',
+      category: 'Dev Toolchain' as const,
+      path: path.join(localAppData, 'Docker', 'wsl', 'disk', 'docker_data.vhdx'),
+      // RED: this single file IS your Docker data. Deleting it destroys every
+      // image, container and volume. It shrinks by running Docker's own prune,
+      // never by removing the file.
+      tier: 'RED' as SafetyTier,
+      canDelete: false,
+      reclaimCommandId: 'docker-prune',
+      impactDescription: 'Every Docker image, container and volume lives in this one file. It grows and never shrinks on its own.',
+      safeReason: 'DO NOT DELETE — this file is your Docker data. Free space with "docker system prune -a", then compact the disk. Both are available as one-click actions.'
+    },
+    {
+      id: 'gradle-cache',
+      name: 'Gradle build cache',
+      category: 'Dev Toolchain' as const,
+      path: path.join(homeDir, '.gradle', 'caches'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Downloaded dependencies and build outputs. Gradle refetches and rebuilds on demand.',
+      safeReason: 'Safe to delete. A build cache only — the next build repopulates it.'
+    },
+    {
+      id: 'maven-repo',
+      name: 'Maven local repository',
+      category: 'Dev Toolchain' as const,
+      path: path.join(homeDir, '.m2', 'repository'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Downloaded Java dependencies. Maven refetches on the next build.',
+      safeReason: 'Safe to delete. Dependencies are redownloaded from the registry.'
+    },
+    {
+      id: 'go-mod-cache',
+      name: 'Go module cache',
+      category: 'Dev Toolchain' as const,
+      path: path.join(homeDir, 'go', 'pkg', 'mod'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      reclaimCommandId: 'go-cache-clean',
+      impactDescription: 'Downloaded Go modules. Redownloaded on the next build.',
+      safeReason: 'Safe to delete. Use "go clean -modcache" or delete directly.'
+    },
+    {
+      id: 'cargo-registry',
+      name: 'Rust cargo registry',
+      category: 'Dev Toolchain' as const,
+      path: path.join(homeDir, '.cargo', 'registry'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Downloaded crates. Refetched on the next build.',
+      safeReason: 'Safe to delete. Crates are redownloaded from crates.io.'
+    },
+    {
+      id: 'nuget-packages',
+      name: 'NuGet package cache',
+      category: 'Dev Toolchain' as const,
+      path: path.join(homeDir, '.nuget', 'packages'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Downloaded .NET packages. Restored on the next build.',
+      safeReason: 'Safe to delete. Packages are restored from the feed.'
+    },
   ];
 
   const scanned = await mapLimit(scanDefinitions, 4, async (def) => {
     const stat = await statSafe(def.path);
     if (!stat) return null;
 
-    const size = await getDirectorySize(def.path);
+    const measured = await measureDirectory(def.path);
+    const size = measured.bytes;
     const item: AICacheItem = {
       id: def.id,
       name: def.name,
@@ -563,7 +723,9 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       canDelete: def.canDelete,
       impactDescription: def.impactDescription,
       lastModified: stat.mtime.toISOString().split('T')[0],
-      safeReason: def.safeReason
+      safeReason: def.safeReason,
+      reclaimCommandId: (def as { reclaimCommandId?: string }).reclaimCommandId,
+      idleDays: idleDaysFor(measured.newestMtimeMs)
     };
     return item;
   });

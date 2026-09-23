@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { AICacheItem } from '../types';
 import { FolderOpen, Trash2, CheckCircle2 } from 'lucide-react';
 import { toolColor } from '../lib/toolColors';
+import { ReclaimCommands } from './ReclaimCommands';
 
 interface SafeDeleteSectionProps {
   items: AICacheItem[];
@@ -162,6 +163,8 @@ export const SafeDeleteSection: React.FC<SafeDeleteSectionProps> = ({
           })}
         </div>
       )}
+
+      <ReclaimCommands />
     </div>
   );
 };
