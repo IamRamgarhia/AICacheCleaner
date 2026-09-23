@@ -633,6 +633,28 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       impactDescription: 'Compiled GPU shaders.',
       safeReason: 'Safe to delete. Recompiled automatically, at a brief one-time cost.'
     },
+    {
+      id: 'pnpm-store',
+      name: 'pnpm content store',
+      category: 'Dev Toolchain' as const,
+      path: path.join(localAppData, 'pnpm', 'store'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      reclaimCommandId: 'pnpm-store-prune',
+      impactDescription: 'Every package version pnpm has downloaded, shared across all your projects.',
+      safeReason: 'Safe to delete. pnpm refetches on the next install. Prefer "pnpm store prune", which removes only versions no project references.'
+    },
+    {
+      id: 'composer-cache',
+      name: 'Composer cache (PHP)',
+      category: 'Dev Toolchain' as const,
+      path: path.join(localAppData, 'Composer'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      reclaimCommandId: 'composer-clear-cache',
+      impactDescription: 'Downloaded PHP packages and VCS clones.',
+      safeReason: 'Safe to delete. Composer refetches on the next install.'
+    },
     // --- Dev toolchains -----------------------------------------------------
     //
     // Not AI tools, but every AI agent, MCP server and coding assistant builds

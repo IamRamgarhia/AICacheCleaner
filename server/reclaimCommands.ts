@@ -98,6 +98,26 @@ export const RECLAIM_COMMANDS: ReclaimCommand[] = [
     note: 'Refetched on demand.'
   },
   {
+    id: 'pnpm-store-prune',
+    tool: 'pnpm',
+    label: 'Unreferenced packages in the pnpm store',
+    preview: { bin: 'pnpm', args: ['store', 'path'] },
+    // prune drops only versions no installed project points at — safer than
+    // deleting the store outright, which forces a refetch of everything.
+    run: { bin: 'pnpm', args: ['store', 'prune'] },
+    manual: 'pnpm store prune',
+    note: 'Removes package versions no project on this machine references. Projects in use are unaffected.'
+  },
+  {
+    id: 'composer-clear-cache',
+    tool: 'Composer',
+    label: 'PHP package cache',
+    preview: { bin: 'composer', args: ['config', 'cache-dir'] },
+    run: { bin: 'composer', args: ['clear-cache', '--no-interaction'] },
+    manual: 'composer clear-cache',
+    note: 'Refetched on the next install. Installed vendor/ directories are untouched.'
+  },
+  {
     id: 'go-cache-clean',
     tool: 'Go',
     label: 'Go build and module cache',
