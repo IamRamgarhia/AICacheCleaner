@@ -454,7 +454,9 @@ app.get('/api/status', async (_req, res) => {
   try {
     res.json({
       drives: await drivesSnapshot(),
-      recycleBin: await recycleBinSummary(),
+      // Never wait on the (slow) bin read here: answer with the last known
+      // figures and refresh in the background. The delete path reads it fresh.
+      recycleBin: (void recycleBinSummary(), binCache?.value ?? null),
       scan: getScanProgress(),
       lastScanAt: cachedScan?.at ?? null,
       home: os.homedir(),
@@ -1112,7 +1114,10 @@ const server = app.listen(PORT, '127.0.0.1', () => {
   // Serve whatever was saved last time, then warm a fresh scan in the
   // background so the first screen the user opens is already populated.
   loadScanFromDisk();
-  void getScannedItems(!cachedScan).catch(() => {});
+  // Launching helper processes blocks this process briefly (antivirus checks
+  // each launch of an unsigned app), so the refresh starts after the window's
+  // first requests have been answered.
+  setTimeout(() => { void getScannedItems(!cachedScan).catch(() => {}); }, cachedScan ? 5_000 : 1_500);
 });
 
 server.on('error', (err: any) => {

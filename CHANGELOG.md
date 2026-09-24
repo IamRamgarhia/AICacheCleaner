@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.2.0] - Unreleased
+## [1.2.0] - 2026-09-24
 
 ### 🖥️ A real desktop app, a safer delete, and 16× faster scans
 
@@ -53,6 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 51 unit/integration tests (including a real delete → Recycle Bin → restore round trip) and 10 UI tests against a mocked engine, plus an Electron shell test.
 - CI now runs on Windows, macOS and Linux.
 - Fixed: the dev server watched build output and locked files, which broke packaging with `EPERM`.
+
+#### ⚠️ Known issue
+
+- The build is not code-signed yet. Windows SmartScreen shows a warning on first run, and on some PCs the first screen takes up to ~10 seconds to fill in while Windows security checks the helper processes the app starts. Later screens are fast.
 
 ---
 
