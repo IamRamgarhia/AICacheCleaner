@@ -68,6 +68,12 @@ A: It frees space inside docker_data.vhdx, but the file doesn't shrink. Compact 
 Q: What is OptGuideOnDeviceModel?
 A: Chrome's on-device Gemini Nano model (~4 GB). Turn off "On-device AI" in Chrome Settings → System; deleting the folder alone only lasts until Chrome downloads it again.
 
+Q: Where are Ollama models stored on Windows, and how do I remove one?
+A: In %USERPROFILE%\.ollama\models (or OLLAMA_MODELS). Models share data files, so remove one with "ollama rm <model>"; AICacheCleaner lists each model with its size and that command.
+
+Q: How much disk space can I get back?
+A: On the development machine: 11.5 GB of rebuildable caches, 44.8 GB of empty space inside the Docker disk, 16.4 GB of guided Windows items, and 4 GB for Chrome's on-device model. Results depend on your tools.
+
 Q: Is deleting npm/pip/pnpm caches safe?
 A: Yes; they re-download on demand and installed projects are unaffected.
 
