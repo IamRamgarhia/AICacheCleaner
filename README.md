@@ -6,7 +6,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue.svg)](https://github.com/IamRamgarhia/AICacheCleaner/releases)
 [![Security: 100% On-Demand Offline](https://img.shields.io/badge/Security-100%25%20On--Demand%20Offline-success.svg)](#-100-on-demand-security-guarantee)
-[![Release: v1.1.0](https://img.shields.io/badge/Release-v1.1.0-brightgreen.svg)](https://github.com/IamRamgarhia/AICacheCleaner/releases)
+[![Release: v1.2.0](https://img.shields.io/badge/Release-v1.2.0-brightgreen.svg)](https://github.com/IamRamgarhia/AICacheCleaner/releases)
+[![Website](https://img.shields.io/badge/Website-AICacheCleaner-2ea44f.svg)](https://iamramgarhia.github.io/AICacheCleaner/)
 
 <p align="center">
   <img src="screenshots/hero-banner.svg" alt="AICacheCleaner — Clean Claude, Cursor & Ollama Cache to Free Up Disk Space. 100% safe, FOSS, offline." width="100%" />
@@ -18,22 +19,22 @@
 
 <table>
   <tr>
-    <td width="50%" align="center"><b>Dashboard — AI cache footprint across drives</b></td>
-    <td width="50%" align="center"><b>Safe Delete — 100% risk-free GREEN caches</b></td>
+    <td width="50%" align="center"><b>Storage overview — everything AI stores, by tool</b></td>
+    <td width="50%" align="center"><b>All locations — safety rating and what's inside</b></td>
   </tr>
   <tr>
-    <td><img src="screenshots/dashboard.svg" alt="AICacheCleaner dashboard showing total AI cache footprint of 104 GB across C:, D: and E: drives, hygiene score 87, and detected caches for Cursor, Claude, Antigravity and Ollama sorted by GREEN/YELLOW safety tier." /></td>
-    <td><img src="screenshots/safe-delete.svg" alt="AICacheCleaner Safe Delete view listing 100% safe GREEN-tier caches including Cursor Cache_Data, Cursor CachedData, Claude Desktop logs and Claude GPU shader cache, each with a plain-English explanation of why deletion is safe." /></td>
+    <td><img src="docs/screenshots/overview.png" alt="AICacheCleaner storage overview: tracked storage by tool, safe-to-reclaim total, and empty space inside the Docker disk that compacting would return." /></td>
+    <td><img src="docs/screenshots/locations.png" alt="AICacheCleaner All locations: AI caches sorted by size with Rebuilds itself / Your data / Protected ratings and a details pane showing the largest folders inside." /></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><b>Before &amp; After — 1 click reclaims tens of GB</b></td>
+    <td colspan="2" align="center"><b>Disk explorer — where the space goes, filling in live</b></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="screenshots/freed-space.svg" alt="Before and after comparison: AICacheCleaner cleaned Claude cache, Cursor cache and unused Ollama weights to reclaim 47 GB of disk space, raising the hygiene score from 41 to 92 and clearing all zombie processes." /></td>
+    <td colspan="2"><img src="docs/screenshots/explorer.png" alt="AICacheCleaner Disk explorer listing folders of a user profile largest first." /></td>
   </tr>
 </table>
 
-> **Note:** the images above are illustrative mockups, not captures of the current build. The UI has since been redesigned. Replace the files in [`screenshots/`](screenshots) with real captures before publishing.
+> Screenshots use demo data, so no real paths from any machine are shown.
 
 ---
 
@@ -84,13 +85,13 @@ Beyond the fixed list above, AICacheCleaner **discovers** AI tool directories ac
 
 ---
 
-## 📥 Download AICacheCleaner (v1.1.0)
+## 📥 Download AICacheCleaner (v1.2.0)
 
 **Zero installation** — download the portable build and double-click to run.
 
 | OS | File | Size | Download |
 | :--- | :--- | :--- | :--- |
-| 🪟 **Windows 10/11** | `AICacheCleaner-Portable-1.1.0.exe` | ~75 MB | [⚡ Download Windows Portable](https://github.com/IamRamgarhia/AICacheCleaner/releases/download/v1.1.0/AICacheCleaner-Portable-1.1.0.exe) |
+| 🪟 **Windows 10/11** | `AICacheCleaner-Portable-1.2.0.exe` | ~76 MB | [⚡ Download Windows Portable](https://github.com/IamRamgarhia/AICacheCleaner/releases/download/v1.2.0/AICacheCleaner-Portable-1.2.0.exe) |
 
 **Prefer a normal installed program?** After launching the portable build, open **Settings → Install as Native Windows App** to register it with Start Menu + Control Panel (the installer is generated from inside the app — no separate download).
 
@@ -126,8 +127,23 @@ Triggers the official Windows Add/Remove Programs panel (`appwiz.cpl` / `ms-sett
 ### 6. 🤖 Autonomous Agents & Web Crawler Scanner
 Detects installed and residual scraping engines including **OpenDevin, Crawl4AI, Playwright, and Puppeteer** headless browser binaries.
 
-### 7. 🧟 RAM Zombie Process Inspector
-Identifies background AI sidecars, MCP language servers, and orphaned processes using **real `pidusage` CPU/RAM stats** (not estimates), with 1-click safe termination.
+### 7. 🧟 Idle Process Inspector
+Names every AI process from its real command line ("MCP server: @playwright/mcp", "Claude Code (in Antigravity)"). A process is only called **idle** when its parent app has closed, it has no window, it holds 150 MB+ and it has done no CPU work for 10 minutes. Stopping one always asks first, and only works on processes the app listed.
+
+### 8. 🧯 Deletes That Can't Go Wrong
+Everything goes to the **Recycle Bin**, after a caution dialog that shows what is inside the folders. If Windows would delete something permanently instead — too big for the bin, a drive without a bin, or a selection that would push your older recycled files out — the whole delete is **refused** and nothing is touched. Folders holding code, git repositories, databases or logins are locked.
+
+### 9. 🌐 Every Chromium App's Cache, Found Automatically
+Chrome, Edge, Brave, VS Code, Slack, Discord, WhatsApp, Claude and any other Electron app keep disposable web, code and GPU caches. They're found by their profile layout, not a hand-kept list — plus **Chrome's 4 GB on-device Gemini Nano model** and individual Hugging Face, Ollama and LM Studio models.
+
+### 10. 🐳 Docker Disk Space You Can Get Back
+Docker's virtual disk never shrinks on its own. The dashboard shows how much of it is empty space (44 GB of 55 GB on the development machine) and gives the exact, safe steps to return it to Windows — images, containers and volumes are kept.
+
+### 11. 🗂️ Disk Explorer & Windows Tips
+Browse any drive largest-first, filling in live. Guided, copy-paste steps for the hibernation file, Windows Update leftovers, NVIDIA driver downloads and old downloads — the app never touches these itself.
+
+### 12. ⌨️ Built Like Desktop Software
+Native title bar and dialogs, status bar with free space and Recycle Bin room, split view with details, right-click menus, tray icon, and keyboard control: **Ctrl+F** search, **↑/↓** move, **Space** select, **Enter** open, **Delete** delete (it still asks), **Ctrl+R** rescan, **Ctrl+1…9** switch pages.
 
 ---
 
@@ -154,17 +170,17 @@ Generic cleaners like **CCleaner** and **BleachBit** are great for browser and s
 
 ## 📊 Real-World Impact — How Much Space Can You Reclaim?
 
-> ⚠️ **The numbers below are illustrative examples, not measured results.** They describe the kind of accumulation a heavy AI user might see. Your actual figures depend entirely on which tools you run. Run a scan to see your own.
+Measured on the development machine (Windows 11, 300 GB C: drive with 22 GB free), September 2026:
 
-| What was cleaned | Tool | Space reclaimed | Why it grew so big |
+| What | Tool | Size | How it's reclaimed |
 |---|---|---|---|
-| Claude Desktop `Cache` + `GPUCache` + `logs` | Claude | **18.4 GB** | Webview cache + silent `claude-code-vm` downloads |
-| Cursor `Cache_Data` + `CachedData` | Cursor | **5.2 GB** | Old V8 bytecodes accumulate without auto-cleanup |
-| Unused Ollama weights (LLaMA, Qwen) | Ollama | **23.4 GB** | Each pulled model is 4–7 GB, easy to forget |
-| Antigravity / Gemini brain state | Antigravity | **15.1 GB** | Transcript + skill artifacts cached locally |
-| HuggingFace + PyTorch checkpoints | HF / Torch | **9.8 GB** | Auto-downloaded weights, never removed |
-| **Total reclaimed in one pass** | — | **~47 GB** | — |
+| Empty space inside `docker_data.vhdx` | Docker Desktop | **44.8 GB** (of a 55.4 GB file) | Guided `diskpart` compact — images and volumes kept |
+| Caches that rebuild themselves | npm, pnpm, Composer, uv, app caches… | **11.5 GB** | Recycle Bin, after confirmation |
+| Hibernation file, update leftovers, driver downloads | Windows | **16.4 GB** | Guided steps (`powercfg`, Disk Cleanup) |
+| On-device AI model (`OptGuideOnDeviceModel`) | Chrome | **4.0 GB** | Chrome Settings → System → On-device AI |
+| Chromium/Electron app caches | Chrome, Edge, WhatsApp, Claude… | **2.6 GB** across 78 folders | Recycle Bin |
 
+Your figures depend on which tools you use — run a scan to see your own.
 
 ---
 
@@ -274,10 +290,28 @@ npm install
 npm run dev
 
 # 4. Build the Windows portable executable
-npm run build:win-portable    # produces dist-electron/AICacheCleaner-Portable-1.1.0.exe
+npm run build:win-portable    # produces dist-electron/AICacheCleaner-Portable-1.2.0.exe
 ```
 
 ---
+
+### Signing builds (maintainers)
+Unsigned builds show a Windows SmartScreen warning on first run. electron-builder signs automatically when a code-signing certificate is provided:
+
+```bash
+set CSC_LINK=C:\path\to\certificate.pfx
+set CSC_KEY_PASSWORD=your-password
+npm run build:win-portable
+```
+
+Never commit the certificate or its password.
+
+### Tests
+```bash
+npm test                 # unit + integration (51), incl. a real Recycle Bin round trip on Windows
+npm run test:e2e         # UI flows against a mocked engine
+set AICC_ELECTRON=1 && npx playwright test e2e/electron.spec.ts   # the Electron shell
+```
 
 ## 📜 License & Credits
 

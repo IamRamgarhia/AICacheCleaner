@@ -86,6 +86,20 @@ export function isIdleProcess(p: { memMb: number; hasWindow: boolean; parentAliv
   return !p.isSelf && !p.hasWindow && !p.parentAlive && p.memMb >= IDLE_MIN_MB && p.quietMs >= IDLE_AFTER_MS;
 }
 
+/**
+ * Quiet-period bookkeeping for one process. CPU is measured from a fixed
+ * baseline taken when the quiet period began, so slow steady work (4% CPU)
+ * adds up and resets it instead of hiding under a per-scan delta.
+ */
+export function nextQuietEntry(
+  prev: { baseCpu: number; quietSince: number } | undefined,
+  cpuSec: number,
+  now: number
+): { baseCpu: number; quietSince: number } {
+  const stillQuiet = prev !== undefined && cpuSec >= prev.baseCpu && cpuSec - prev.baseCpu <= QUIET_CPU_SECONDS;
+  return stillQuiet ? prev : { baseCpu: cpuSec, quietSince: now };
+}
+
 export async function scanAIProcesses(): Promise<AIProcessItem[]> {
   const isWindows = os.platform() === 'win32';
   const processes: AIProcessItem[] = [];
@@ -111,12 +125,8 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
 
       const nextHistory = new Map<string, { baseCpu: number; quietSince: number }>();
       for (const p of data.procs) {
-        // CPU is measured from a fixed baseline taken when the quiet period
-        // began, so slow steady work (4% CPU) can't hide under a per-scan delta.
         const key = `${p.pid}:${p.created}`;
-        const prev = cpuHistory.get(key);
-        const stillQuiet = prev !== undefined && p.cpuSec - prev.baseCpu <= QUIET_CPU_SECONDS;
-        const entry = stillQuiet ? prev : { baseCpu: p.cpuSec, quietSince: now };
+        const entry = nextQuietEntry(cpuHistory.get(key), p.cpuSec, now);
         nextHistory.set(key, entry);
         const quietSince = entry.quietSince;
 

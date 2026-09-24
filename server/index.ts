@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { scanAICaches, formatBytes, getDirectorySize, calculateNonOverlappingSize } from './scanner';
+import { scanAICaches, formatBytes, getDirectorySize, calculateNonOverlappingSize, getScanProgress } from './scanner';
 import { pathExists, readdirSafe } from './fsAsync';
 import { scanAIProcesses, killProcess } from './processInspector';
 import { createSnapshot, listSnapshots, restoreSnapshot, deleteItemsSafely } from './snapshotManager';
@@ -8,6 +8,11 @@ import { exportProjectVault, importProjectVault, exportSingleProject } from './m
 import { discoverProjects, findSourcesForProject, UNLINKABLE_TOOLS } from './projectLinker';
 import { beginExport, finishExport, getExportProgress } from './exportProgress';
 import { listAvailableReclaimCommands, runReclaimCommand } from './reclaimCommands';
+import { recycleBinLimits } from './recycleBinLimit';
+import { inspectFolder, invalidateInspections } from './folderInspect';
+import { listDrives } from './drives';
+import { getSystemTips } from './systemTips';
+import { sanitizeConfig, type AppConfig } from './config';
 import { detectInstalledAISoftware } from './softwareDetector';
 import { convertTranscripts, listAvailableTranscriptApps } from './transcriptConverter';
 import type { SystemMetrics, AICacheItem, AISoftwareAppItem } from '../src/types';
@@ -21,7 +26,7 @@ const PORT = 3333;
 
 // Single source of truth for identity strings that were previously duplicated
 // (and drifted) across endpoints.
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.2.0';
 const GITHUB_REPO = 'IamRamgarhia/AICacheCleaner';
 const RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases/latest`;
 
@@ -75,12 +80,6 @@ app.use(cors({
 // parser is a trivial memory-exhaustion vector.
 app.use(express.json({ limit: '1mb' }));
 
-// Persistent Local Configuration Engine
-interface AppConfig {
-  cacheThresholdGb: number;
-  restorePointPolicy: 'PROMPT' | 'ALWAYS' | 'NEVER';
-  customRestorePath: string;
-}
 
 // Two settings were removed rather than implemented, because implementing them
 // would have contradicted guarantees the product makes everywhere else:
@@ -95,8 +94,11 @@ interface AppConfig {
 const defaultConfig: AppConfig = {
   cacheThresholdGb: 20,
   restorePointPolicy: 'PROMPT',
-  customRestorePath: path.join(os.homedir(), 'Desktop', 'Restored_AI_Files')
+  customRestorePath: path.join(os.homedir(), 'Desktop', 'Restored_AI_Files'),
+  reminderEnabled: false,
+  reminderGb: 5
 };
+
 
 function getLocalConfig(): AppConfig {
   const configDir = path.join(os.homedir(), '.ai-cache-cleaner');
@@ -292,6 +294,13 @@ app.post('/api/clean', async (req, res) => {
       return res.status(400).json({ error: 'No valid items found for cleaning.' });
     }
 
+    // One id must mean one folder. If two scanned items ever shared an id,
+    // cleaning "one" would delete both — refuse instead of guessing.
+    const ambiguous = itemIds.filter((id: string) => rawItems.filter((i: AICacheItem) => i.id === id).length > 1);
+    if (ambiguous.length > 0) {
+      return res.status(409).json({ error: 'Nothing was deleted: an item could not be identified uniquely. Rescan and try again.' });
+    }
+
     // The UI greys these out, but the server is the trust boundary: a protected
     // item (e.g. Docker's virtual disk) must never be deletable by request.
     const locked = targetItems.filter((i: AICacheItem) => !i.canDelete);
@@ -345,6 +354,7 @@ app.post('/api/clean', async (req, res) => {
 
     // The on-disk state just changed, so the cached scan is stale.
     cachedScan = null;
+    for (const moved of result.movedToTrash) invalidateInspections(moved);
 
     res.json({
       success: result.success,
@@ -397,6 +407,78 @@ app.get('/api/metrics', async (_req, res) => {
   }
 });
 
+// What a folder holds, largest first. Read-only; used by the details pane and
+// the disk explorer.
+app.get('/api/inspect', async (req, res) => {
+  try {
+    const target = String(req.query.path || '');
+    if (!target || !path.isAbsolute(target)) {
+      return res.status(400).json({ error: 'An absolute folder path is required.' });
+    }
+    const stat = await fs.promises.stat(target).catch(() => null);
+    if (!stat) return res.status(404).json({ error: 'This location no longer exists — rescan to update the list.' });
+    if (!stat.isDirectory()) return res.status(422).json({ error: 'This is a single file, not a folder.' });
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 500);
+    res.json(await inspectFolder(target, limit, req.query.live === '1'));
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// Status bar: free space per drive, Recycle Bin room, scan progress.
+let binCache: { at: number; value: Record<string, { bytes: number; usedBytes: number; off: boolean }> | null } | null = null;
+let binInFlight: ReturnType<typeof recycleBinSummaryFresh> | null = null;
+async function recycleBinSummary() {
+  if (binCache && Date.now() - binCache.at < 60_000) return binCache.value;
+  binInFlight ??= recycleBinSummaryFresh().finally(() => { binInFlight = null; });
+  return binInFlight;
+}
+async function recycleBinSummaryFresh() {
+  const value = await recycleBinLimits()
+    .then(m => Object.fromEntries([...m].map(([d, l]) => [d, { bytes: l.bytes, usedBytes: l.usedBytes, off: l.nukeOnDelete }])))
+    .catch(() => null);
+  binCache = { at: Date.now(), value };
+  return value;
+}
+
+// The status bar polls this every 1.5 s during a scan. Drives and the bin are
+// slow to read, so they are shared by all callers and refreshed at most every
+// few seconds — a slow read can never pile up behind itself.
+let driveCache: { at: number; value: Promise<Awaited<ReturnType<typeof listDrives>>> } | null = null;
+function drivesSnapshot() {
+  if (!driveCache || Date.now() - driveCache.at > 5_000) driveCache = { at: Date.now(), value: listDrives() };
+  return driveCache.value;
+}
+
+app.get('/api/status', async (_req, res) => {
+  try {
+    res.json({
+      drives: await drivesSnapshot(),
+      recycleBin: await recycleBinSummary(),
+      scan: getScanProgress(),
+      lastScanAt: cachedScan?.at ?? null,
+      home: os.homedir(),
+      version: APP_VERSION
+    });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// Windows-level space with guided steps (hibernation file, update leftovers…).
+// Report-only: every action is a step or a copy-paste command for the user.
+let tipsCache: { at: number; tips: Awaited<ReturnType<typeof getSystemTips>> } | null = null;
+app.get('/api/system-tips', async (req, res) => {
+  try {
+    if (!tipsCache || req.query.refresh === '1' || Date.now() - tipsCache.at > 10 * 60_000) {
+      tipsCache = { at: Date.now(), tips: await getSystemTips() };
+    }
+    res.json({ tips: tipsCache.tips });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 // API 4: Get Saved Configuration
 app.get('/api/config', (_req, res) => {
   res.json(getLocalConfig());
@@ -405,7 +487,7 @@ app.get('/api/config', (_req, res) => {
 // API 5: Save Local Configuration
 app.post('/api/config', (req, res) => {
   try {
-    const updated = saveLocalConfig(req.body);
+    const updated = saveLocalConfig(sanitizeConfig(req.body));
     res.json({ success: true, config: updated });
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
@@ -714,7 +796,7 @@ app.get('/api/check-update', async (_req, res) => {
       body?: string;
       html_url?: string;
       published_at?: string;
-      assets?: Array<{ name: string; browser_download_url: string; size: number }>;
+      assets?: Array<{ name: string; browser_download_url: string; size: number; digest?: string }>;
     }
 
     const latestRelease = (await response.json()) as GithubRelease;
@@ -745,7 +827,9 @@ app.get('/api/check-update', async (_req, res) => {
       assets: latestRelease.assets?.map(a => ({
         name: a.name,
         downloadUrl: a.browser_download_url,
-        sizeBytes: a.size
+        sizeBytes: a.size,
+        // "sha256:<hex>" when GitHub has computed it; used to verify downloads.
+        digest: a.digest
       })) || []
     });
   } catch (e) {

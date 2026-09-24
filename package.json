@@ -1,8 +1,8 @@
 {
   "name": "ai-cache-cleaner",
   "private": true,
-  "version": "1.1.0",
-  "description": "AICacheCleaner \u2014 100% Safe On-Demand AI Disk, Memory & Cache Optimizer",
+  "version": "1.2.0",
+  "description": "AICacheCleaner — 100% Safe On-Demand AI Disk, Memory & Cache Optimizer",
   "author": "Dice Codes (https://dicecodes.com/)",
   "type": "module",
   "main": "electron/main.cjs",
@@ -23,7 +23,8 @@
     "lint": "eslint .",
     "prebuild": "npm run typecheck",
     "preview": "vite preview",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@fontsource-variable/ibm-plex-sans": "^5.3.0",
@@ -42,6 +43,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
+    "@playwright/test": "1.49.1",
     "@types/adm-zip": "^0.5.7",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",

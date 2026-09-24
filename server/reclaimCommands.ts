@@ -37,6 +37,8 @@ export interface ReclaimCommand {
   note: string;
   /** True when the tool must be running for the command to work. */
   needsDaemon?: boolean;
+  /** Limit to these platforms (the compact steps are Windows-only). */
+  platforms?: NodeJS.Platform[];
 }
 
 export const RECLAIM_COMMANDS: ReclaimCommand[] = [
@@ -58,6 +60,7 @@ export const RECLAIM_COMMANDS: ReclaimCommand[] = [
   },
   {
     id: 'docker-compact',
+    platforms: ['win32'],
     tool: 'Docker',
     label: 'Shrink the virtual disk after pruning',
     preview: { bin: 'docker', args: ['system', 'df'] },
@@ -166,7 +169,7 @@ async function isAvailable(bin: string): Promise<boolean> {
 
 export async function listAvailableReclaimCommands() {
   return Promise.all(
-    RECLAIM_COMMANDS.map(async c => ({
+    RECLAIM_COMMANDS.filter(c => !c.platforms || c.platforms.includes(process.platform)).map(async c => ({
       id: c.id,
       tool: c.tool,
       label: c.label,

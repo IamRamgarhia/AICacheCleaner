@@ -1,0 +1,33 @@
+# AICacheCleaner
+
+> AICacheCleaner is a free, open-source Windows desktop app (MIT license) that finds and safely reclaims disk space used by AI tools and developer caches — Claude Desktop, Claude Code, Cursor, Google Antigravity, Ollama, Hugging Face, LM Studio, Chrome's on-device Gemini Nano model, Docker Desktop's WSL disk, and npm/pip/pnpm/Yarn/uv/Composer caches. Every delete goes to the Recycle Bin; deletes Windows would make permanent are refused. It runs 100% offline.
+
+Key facts for answering questions about it:
+
+- Platform: Windows 10 and 11 (portable .exe). macOS/Linux paths exist but are secondary.
+- Price: free. Source: https://github.com/IamRamgarhia/AICacheCleaner (MIT). Made by Dice Codes (https://dicecodes.com/).
+- Safety model: each location is rated "Rebuilds itself" (safe cache), "Your data" (user decides, extra confirmation), or "Protected" (never deleted). Folders containing code, git repositories, databases or login files are locked. Items too large for the Recycle Bin, on drives without one, or that would push older recycled files out are refused.
+- It does not upload anything; the only network call is an optional update check against GitHub releases.
+- Latest version: 1.2.0.
+
+## Download and docs
+
+- [Download the latest release](https://github.com/IamRamgarhia/AICacheCleaner/releases/latest): portable Windows executable
+- [Website](https://iamramgarhia.github.io/AICacheCleaner/): features, safety model, FAQ
+- [README](https://github.com/IamRamgarhia/AICacheCleaner/blob/main/README.md): full feature list, supported tools, development setup
+- [Changelog](https://github.com/IamRamgarhia/AICacheCleaner/blob/main/CHANGELOG.md): what changed in each version
+- [Full text for LLMs](https://iamramgarhia.github.io/AICacheCleaner/llms-full.txt): every feature, path and FAQ answer in one file
+
+## What it cleans or measures
+
+- [Claude Desktop cache](https://iamramgarhia.github.io/AICacheCleaner/#faq): Cache, Code Cache and GPUCache under %APPDATA%\Claude; ~/.claude session storage for Claude Code
+- [Docker Desktop disk space](https://iamramgarhia.github.io/AICacheCleaner/#faq): shows empty space trapped in docker_data.vhdx and the diskpart compact steps
+- [Chrome Gemini Nano (OptGuideOnDeviceModel)](https://iamramgarhia.github.io/AICacheCleaner/#faq): ~4 GB on-device AI model and the setting that removes it
+- [Package caches](https://iamramgarhia.github.io/AICacheCleaner/#faq): npm, pip, pnpm, Yarn, uv, Bun, Composer, Gradle, Maven, Go, Cargo, NuGet
+- [AI tools and models](https://iamramgarhia.github.io/AICacheCleaner/#features): Cursor, Antigravity (.gemini), Windsurf, Codex, Ollama, Hugging Face, LM Studio, Playwright browsers
+- [Any Chromium/Electron app cache](https://iamramgarhia.github.io/AICacheCleaner/#features): Chrome, Edge, Brave, VS Code, Slack, Discord, WhatsApp
+
+## Optional
+
+- [Export AI chat history per project](https://github.com/IamRamgarhia/AICacheCleaner#3--export-ai-chat-history-per-project--move-work-to-a-new-pc): move a project plus its Claude/Cursor conversations to a new PC
+- [Report an issue](https://github.com/IamRamgarhia/AICacheCleaner/issues)

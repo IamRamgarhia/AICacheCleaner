@@ -8,8 +8,14 @@ on:
 
 jobs:
   quality-gate:
-    name: Typecheck · Lint · Build
-    runs-on: ubuntu-latest
+    name: Typecheck · Lint · Test · Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The app's paths, Recycle Bin handling and sizing differ per OS, so
+        # every one of them is exercised on the OS it targets.
+        os: [windows-latest, ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,13 +38,19 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # Guards the v1.0.0 regression where the packaged app could not delete
-      # anything: esbuild stubbed import.meta.url inside the ESM-only `trash`
-      # package. The test bundles with production flags and deletes a real file,
-      # so it fails if that ever regresses. API-guard tests self-skip when no
-      # backend is listening.
+      # Includes the v1.0.0 regression guard (bundled `trash` must really move a
+      # file to the Recycle Bin / Trash), the delete-safety rules and the
+      # Windows-only sizing helper (self-skips elsewhere). API-guard tests
+      # self-skip when no backend is listening.
       - name: Test
         run: npm test
 
       - name: Build
         run: npm run build
+
+      # UI flows against a mocked API — never touches this runner's files.
+      - name: E2E (UI)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e

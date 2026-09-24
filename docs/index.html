@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AICacheCleaner — Free AI Cache Cleaner for Windows</title>
+  <meta name="description" content="Free AI cache cleaner for Windows: clear Claude, Cursor, Ollama and npm caches, shrink Docker's WSL disk. Every delete goes to the Recycle Bin." />
+  <link rel="canonical" href="https://iamramgarhia.github.io/AICacheCleaner/" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="theme-color" content="#0e1116" />
+  <link rel="icon" type="image/png" href="icon.png" />
+  <link rel="alternate" type="text/plain" title="LLM summary" href="llms.txt" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="AICacheCleaner" />
+  <meta property="og:title" content="AICacheCleaner — free AI cache cleaner for Windows" />
+  <meta property="og:description" content="Find and safely reclaim the gigabytes AI tools leave behind: Claude, Cursor, Antigravity, Ollama, Docker, Chrome's on-device AI model, npm and pip caches." />
+  <meta property="og:url" content="https://iamramgarhia.github.io/AICacheCleaner/" />
+  <meta property="og:image" content="https://iamramgarhia.github.io/AICacheCleaner/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="AICacheCleaner showing AI storage by tool and what is safe to reclaim" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="AICacheCleaner — free AI cache cleaner for Windows" />
+  <meta name="twitter:description" content="Reclaim disk space from Claude, Cursor, Ollama, Docker and Chrome AI caches — safely, via the Recycle Bin." />
+  <meta name="twitter:image" content="https://iamramgarhia.github.io/AICacheCleaner/og-image.png" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AICacheCleaner",
+    "applicationCategory": "UtilitiesApplication",
+    "applicationSubCategory": "Disk cleanup",
+    "operatingSystem": "Windows 10, Windows 11",
+    "softwareVersion": "1.2.0",
+    "description": "Free, open-source desktop app that finds and safely reclaims disk space used by AI tools and developer caches: Claude Desktop, Claude Code, Cursor, Antigravity, Ollama, Hugging Face, Chrome's on-device Gemini Nano model, Docker Desktop's WSL disk, npm, pip, pnpm and more. Deletes go to the Recycle Bin and can be restored.",
+    "url": "https://iamramgarhia.github.io/AICacheCleaner/",
+    "downloadUrl": "https://github.com/IamRamgarhia/AICacheCleaner/releases/latest",
+    "installUrl": "https://github.com/IamRamgarhia/AICacheCleaner/releases/latest",
+    "screenshot": "https://iamramgarhia.github.io/AICacheCleaner/screenshots/locations.png",
+    "license": "https://github.com/IamRamgarhia/AICacheCleaner/blob/main/LICENSE",
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Organization", "name": "Dice Codes", "url": "https://dicecodes.com/" },
+    "codeRepository": "https://github.com/IamRamgarhia/AICacheCleaner",
+    "sameAs": ["https://github.com/IamRamgarhia/AICacheCleaner"],
+    "datePublished": "2026-07-24",
+    "dateModified": "2026-09-24",
+    "releaseNotes": "https://github.com/IamRamgarhia/AICacheCleaner/blob/main/CHANGELOG.md",
+    "fileSize": "76MB",
+    "featureList": [
+      "Measures storage used by Claude, Cursor, Antigravity, Ollama, Codex and other AI tools",
+      "Finds every Chromium/Electron app cache automatically",
+      "Shows empty space trapped inside Docker Desktop's WSL disk and how to reclaim it",
+      "Removes Chrome's on-device Gemini Nano model the official way",
+      "Exports AI chat history per project to move to a new PC",
+      "Every delete goes to the Recycle Bin; unrecoverable deletes are refused",
+      "Disk explorer and guided Windows cleanup steps"
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "How do I clear the Claude Desktop cache on Windows?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Claude Desktop keeps its web, code and GPU caches under %APPDATA%\\Claude (Cache, Code Cache, GPUCache). AICacheCleaner lists them as 'Rebuilds itself' and moves them to the Recycle Bin after you confirm; chats and settings in the same folder are never included." } },
+      { "@type": "Question", "name": "Why is Docker Desktop using so much disk space, and how do I shrink docker_data.vhdx?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Docker Desktop stores everything in %LOCALAPPDATA%\\Docker\\wsl\\disk\\docker_data.vhdx, and that file never shrinks by itself. Run 'docker system prune -a', quit Docker Desktop, run 'wsl --shutdown', then compact the disk with diskpart ('select vdisk', 'attach vdisk readonly', 'compact vdisk', 'detach vdisk') as administrator. AICacheCleaner shows how much empty space is trapped and gives the exact commands; images, containers and volumes are kept." } },
+      { "@type": "Question", "name": "What is the 4 GB OptGuideOnDeviceModel folder in Chrome?",
+        "acceptedAnswer": { "@type": "Answer", "text": "It is Chrome's on-device AI model (Gemini Nano) used for features like Help me write and scam detection. Deleting it only helps until Chrome downloads it again; turn off 'On-device AI' in Chrome Settings > System and Chrome removes it itself." } },
+      { "@type": "Question", "name": "Where are Ollama models stored on Windows, and how do I remove one?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Ollama keeps models in %USERPROFILE%\\.ollama\\models (or the folder set in OLLAMA_MODELS). Models share data files, so remove one with 'ollama rm <model>' rather than deleting files. AICacheCleaner lists each model with its size and the exact command." } },
+      { "@type": "Question", "name": "Is it safe to delete the npm, pip or pnpm cache?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Package caches are re-downloaded on the next install and installed projects are untouched. AICacheCleaner can run the tool's own command (npm cache clean --force, pip cache purge, pnpm store prune) or move the cache folder to the Recycle Bin." } },
+      { "@type": "Question", "name": "How do I move my Claude or Cursor chat history to a new computer?",
+        "acceptedAnswer": { "@type": "Answer", "text": "AICacheCleaner's Export & migrate screen matches Claude sessions and Cursor workspaces to the project folder they belong to and exports the project plus its AI conversations into one zip with no size limit." } },
+      { "@type": "Question", "name": "Can AICacheCleaner delete my files permanently by mistake?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. Every delete goes to the Recycle Bin after a confirmation. If Windows would delete something permanently instead (too large for the Recycle Bin, a drive without one, or a selection that would push older recycled files out), the whole delete is refused. Folders holding code, git repositories, databases or login files are locked." } },
+      { "@type": "Question", "name": "Does AICacheCleaner send my data anywhere?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. It runs 100% offline on your PC. The only network request is an optional update check against the project's GitHub releases." } }
+    ]
+  }
+  </script>
+
+  <style>
+    :root {
+      --bg: #0e1116; --panel: #161a21; --rule: #222831; --text: #eceff3; --muted: #a8b0bc; --dim: #6b7380;
+      --safe: #3fb98a; --review: #d9a441; --locked: #d96a6a; --accent: #48c796;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font: 16px/1.6 'Segoe UI Variable Text', 'Segoe UI', -apple-system, system-ui, sans-serif; }
+    a { color: var(--accent); }
+    code { font: 0.9em ui-monospace, 'Cascadia Mono', Consolas, monospace; background: var(--panel); padding: 1px 5px; border-radius: 4px; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+    header.top { border-bottom: 1px solid var(--rule); }
+    header.top .wrap { display: flex; align-items: center; gap: 10px; height: 56px; }
+    header.top img { width: 24px; height: 24px; }
+    header.top strong { font-size: 1rem; }
+    header.top nav { margin-left: auto; display: flex; gap: 18px; font-size: 0.9rem; }
+    header.top nav a { color: var(--muted); text-decoration: none; }
+    @media (max-width: 560px) { header.top nav a:not(:last-child) { display: none; } }
+    .hero { padding: 64px 0 40px; text-align: center; }
+    .hero h1 { font-size: clamp(1.9rem, 4vw, 2.9rem); line-height: 1.15; letter-spacing: -0.02em; max-width: 22ch; margin: 0 auto 16px; }
+    .hero p { color: var(--muted); max-width: 62ch; margin: 0 auto 28px; font-size: 1.1rem; }
+    .cta { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border-radius: 6px; font-weight: 600; text-decoration: none; border: 1px solid var(--rule); color: var(--text); }
+    .btn.primary { background: var(--safe); border-color: var(--safe); color: #07130e; }
+    .meta { margin-top: 14px; color: var(--dim); font-size: 0.85rem; }
+    .shot { margin: 36px auto 0; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+    .shot img { display: block; width: 100%; height: auto; }
+    section { padding: 56px 0; border-top: 1px solid var(--rule); }
+    h2 { font-size: 1.6rem; letter-spacing: -0.01em; margin-bottom: 8px; }
+    .lede { color: var(--muted); margin-bottom: 28px; max-width: 70ch; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 16px; }
+    .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 20px; }
+    .card h3 { font-size: 1.05rem; margin-bottom: 6px; }
+    .card p { color: var(--muted); font-size: 0.95rem; }
+    .tiers { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 24px; }
+    .tier { font-size: 0.85rem; padding: 4px 10px; border-radius: 4px; border: 1px solid; }
+    .tier.safe { color: var(--safe); } .tier.review { color: var(--review); } .tier.locked { color: var(--locked); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .table-wrap { overflow-x: auto; }
+    details { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 18px; margin-bottom: 10px; }
+    summary { cursor: pointer; font-weight: 600; }
+    summary h3 { display: inline; font-size: 1rem; }
+    details p { color: var(--muted); margin-top: 10px; }
+    .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 20px; align-items: center; }
+    footer { border-top: 1px solid var(--rule); padding: 28px 0 40px; color: var(--dim); font-size: 0.9rem; }
+    footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
+    kbd { font: 0.85em ui-monospace, Consolas, monospace; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <img src="icon.png" alt="" width="24" height="24" />
+      <strong>AICacheCleaner</strong>
+      <nav aria-label="Page sections">
+        <a href="#features">Features</a>
+        <a href="#safety">Safety</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/IamRamgarhia/AICacheCleaner">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap hero">
+      <h1>Free AI cache cleaner for Windows — reclaim the gigabytes your AI tools leave behind</h1>
+      <p>
+        See exactly how much disk space Claude, Cursor, Antigravity, Ollama, Docker and Chrome's on-device AI are using,
+        and safely clear the caches that rebuild themselves. Every delete goes to the Recycle Bin.
+      </p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/IamRamgarhia/AICacheCleaner/releases/latest">Download for Windows — free</a>
+        <a class="btn" href="https://github.com/IamRamgarhia/AICacheCleaner">View source on GitHub</a>
+      </div>
+      <div class="meta">Portable .exe · Windows 10 &amp; 11 · 100% offline · open source</div>
+      <div class="shot">
+        <img src="screenshots/locations.png" width="1440" height="860" alt="AICacheCleaner All locations view: AI caches sorted by size with safety ratings and a details pane showing what's inside a folder" />
+      </div>
+    </div>
+
+    <section id="features">
+      <div class="wrap">
+        <h2>Everything AI stores on your PC, in one place</h2>
+        <p class="lede">AI coding tools, local models and Electron apps quietly fill your C: drive. AICacheCleaner finds all of it, sizes it exactly, and tells you what is safe to remove.</p>
+        <div class="grid">
+          <div class="card"><h3>Clear Claude Desktop &amp; Claude Code cache</h3><p>Web, code and GPU caches under <code>%APPDATA%\Claude</code> and session storage in <code>~/.claude</code>, separated from chats and settings.</p></div>
+          <div class="card"><h3>Cursor, Antigravity &amp; Windsurf storage</h3><p>Editor caches, extension hosts and agent workspaces — including Google Antigravity's <code>.gemini</code> folder — measured and rated.</p></div>
+          <div class="card"><h3>Ollama, Hugging Face &amp; LM Studio models</h3><p>Every downloaded model listed on its own, with the exact <code>ollama rm</code> command, so you remove one 7 GB model instead of a whole folder.</p></div>
+          <div class="card"><h3>Shrink the Docker Desktop WSL disk</h3><p><code>docker_data.vhdx</code> never shrinks on its own. See how much of it is empty space and get the exact compact steps — images and volumes are kept.</p></div>
+          <div class="card"><h3>Remove Chrome's 4 GB Gemini Nano model</h3><p>Chrome's <code>OptGuideOnDeviceModel</code> folder, with the official switch that stops it coming back.</p></div>
+          <div class="card"><h3>npm, pip, pnpm, Yarn, uv &amp; Composer caches</h3><p>Package caches are usually the largest safe win on a developer's disk. Clean them by folder or with each tool's own command.</p></div>
+          <div class="card"><h3>Every Chromium app's cache, automatically</h3><p>Chrome, Edge, Brave, VS Code, Slack, Discord, WhatsApp and any Electron app — found by their profile layout, not a hand-kept list.</p></div>
+          <div class="card"><h3>Export AI chat history per project</h3><p>Move a project and every Claude and Cursor conversation about it to a new PC in one zip, with no size limit.</p></div>
+          <div class="card"><h3>Disk explorer &amp; Windows cleanup steps</h3><p>See where space goes on any drive, largest first, plus guided steps for the hibernation file, Windows Update leftovers and old downloads.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="safety">
+      <div class="wrap two">
+        <div>
+          <h2>Built so you can't delete the wrong thing</h2>
+          <p class="lede">Every location gets one of three ratings, and every delete is recoverable — or it doesn't happen.</p>
+          <div class="tiers">
+            <span class="tier safe">Rebuilds itself — safe</span>
+            <span class="tier review">Your data — you decide</span>
+            <span class="tier locked">Protected — never deleted</span>
+          </div>
+          <ul class="lede" style="padding-left:1.2em">
+            <li>Deletes go to the <strong>Recycle Bin</strong>, after a confirmation that shows what's inside.</li>
+            <li>If Windows would delete something <strong>permanently</strong> — too big for the Recycle Bin, a USB or network drive, or a selection that would push your older recycled files out — the delete is <strong>refused</strong>.</li>
+            <li>Folders with code, git repositories, databases or logins are <strong>locked</strong>.</li>
+            <li>One-click <strong>restore points</strong> move files back out of the Recycle Bin.</li>
+            <li>Runs <strong>100% offline</strong>. Nothing is uploaded.</li>
+          </ul>
+        </div>
+        <div class="shot"><img src="screenshots/overview.png" width="1440" height="860" loading="lazy" alt="Storage overview: AI storage by tool, safe to reclaim total, and Docker disk space that compacting would return" /></div>
+      </div>
+    </section>
+
+    <section id="desktop">
+      <div class="wrap two">
+        <div class="shot"><img src="screenshots/explorer.png" width="1440" height="860" loading="lazy" alt="Disk explorer listing folders in a user profile by size, filling in live" /></div>
+        <div>
+          <h2>Feels like a native Windows tool</h2>
+          <p class="lede">Native title bar and dialogs, a status bar with free space and Recycle Bin room, right-click menus and full keyboard control:
+            <kbd>Ctrl</kbd>+<kbd>F</kbd> search, <kbd>↑</kbd>/<kbd>↓</kbd> move, <kbd>Space</kbd> select, <kbd>Enter</kbd> open, <kbd>Delete</kbd> delete (it still asks),
+            <kbd>Ctrl</kbd>+<kbd>R</kbd> rescan. A full scan of 147 locations takes about 30 seconds.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="compare">
+      <div class="wrap">
+        <h2>AICacheCleaner vs CCleaner, BleachBit and manual cleanup</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Need</th><th>AICacheCleaner</th><th>General cleaners</th><th>By hand</th></tr></thead>
+            <tbody>
+              <tr><td>Knows Claude, Cursor, Antigravity, Ollama folders</td><td>Yes, rated per folder</td><td>Mostly no</td><td>If you know where to look</td></tr>
+              <tr><td>Separates caches from chats and settings</td><td>Yes</td><td>No</td><td>Error-prone</td></tr>
+              <tr><td>Docker WSL disk space</td><td>Measures trapped space, gives compact steps</td><td>No</td><td>Manual diskpart</td></tr>
+              <tr><td>Refuses unrecoverable deletes</td><td>Yes</td><td>No</td><td>No</td></tr>
+              <tr><td>Exports AI chat history per project</td><td>Yes</td><td>No</td><td>No</td></tr>
+              <tr><td>Price</td><td>Free, open source</td><td>Free / paid</td><td>Free</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <div class="wrap">
+        <h2>Frequently asked questions</h2>
+        <details><summary><h3>How do I clear the Claude Desktop cache on Windows?</h3></summary><p>Claude Desktop keeps its web, code and GPU caches under <code>%APPDATA%\Claude</code> (<code>Cache</code>, <code>Code Cache</code>, <code>GPUCache</code>). AICacheCleaner lists them as "Rebuilds itself" and moves them to the Recycle Bin after you confirm; chats and settings in the same folder are never included.</p></details>
+        <details><summary><h3>Why is Docker Desktop using so much disk space, and how do I shrink docker_data.vhdx?</h3></summary><p>Docker Desktop stores everything in <code>%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx</code>, which never shrinks by itself. Run <code>docker system prune -a</code>, quit Docker Desktop, run <code>wsl --shutdown</code>, then compact the disk with <code>diskpart</code> as administrator. AICacheCleaner shows how much empty space is trapped and gives the exact commands; images, containers and volumes are kept.</p></details>
+        <details><summary><h3>What is the 4 GB OptGuideOnDeviceModel folder in Chrome?</h3></summary><p>It's Chrome's on-device AI model (Gemini Nano). Deleting it only helps until Chrome downloads it again — turn off "On-device AI" in Chrome Settings → System and Chrome removes it itself.</p></details>
+        <details><summary><h3>Where are Ollama models stored on Windows, and how do I remove one?</h3></summary><p>In <code>%USERPROFILE%\.ollama\models</code> (or the folder set in <code>OLLAMA_MODELS</code>). Models share data files, so remove one with <code>ollama rm &lt;model&gt;</code> instead of deleting files — AICacheCleaner lists each model with its size and the exact command.</p></details>
+        <details><summary><h3>Is it safe to delete the npm, pip or pnpm cache?</h3></summary><p>Yes. Package caches are re-downloaded on the next install and installed projects are untouched. Use the tool's own command (<code>npm cache clean --force</code>, <code>pip cache purge</code>, <code>pnpm store prune</code>) or move the folder to the Recycle Bin.</p></details>
+        <details><summary><h3>How do I move my Claude or Cursor chat history to a new computer?</h3></summary><p>Export &amp; migrate matches Claude sessions and Cursor workspaces to their project folder and exports the project plus its AI conversations as one zip, with no size limit.</p></details>
+        <details><summary><h3>How much disk space can I get back?</h3></summary><p>On the development machine: 11.5 GB of rebuildable caches, 44.8 GB of empty space inside the Docker disk, and 18 GB of guided Windows items (hibernation file, update leftovers, driver downloads).</p></details>
+        <details><summary><h3>Can it delete my files permanently by mistake?</h3></summary><p>No. Deletes go to the Recycle Bin after a confirmation, and anything Windows would delete permanently instead is refused. Code, git repositories, databases and login files are locked.</p></details>
+        <details><summary><h3>Does it send my data anywhere?</h3></summary><p>No. It runs 100% offline. The only network request is an optional update check against GitHub releases.</p></details>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>AICacheCleaner v1.2.0 · MIT licensed · Built by <a href="https://dicecodes.com/">Dice Codes</a></span>
+      <span><a href="https://github.com/IamRamgarhia/AICacheCleaner/blob/main/CHANGELOG.md">Changelog</a> · <a href="llms.txt">llms.txt</a> · <a href="https://github.com/IamRamgarhia/AICacheCleaner/issues">Report an issue</a></span>
+    </div>
+  </footer>
+</body>
+</html>

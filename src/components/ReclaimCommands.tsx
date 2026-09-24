@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Terminal, Play, Eye, Copy, Check, AlertTriangle } from 'lucide-react';
+import { confirmDialog } from '../lib/native';
 
 interface Cmd {
   id: string;
@@ -43,9 +44,13 @@ export const ReclaimCommands: React.FC = () => {
     // These deletions bypass the Recycle Bin (the tool removes its own files),
     // so every run is confirmed with exactly what will execute.
     const cmd = commands.find(c => c.id === id);
-    if (mode === 'run' && cmd && !window.confirm(
-      `Run "${cmd.manual}"?\n\n${cmd.note}\n\nThis is done by ${cmd.tool} itself and does NOT go to the Recycle Bin. Use Preview first to see what it covers.`
-    )) return;
+    if (mode === 'run' && cmd && !(await confirmDialog({
+      title: `${cmd.tool} cleanup`,
+      message: `Run "${cmd.manual}"?`,
+      detail: `${cmd.note}\n\nThis is done by ${cmd.tool} itself and does NOT go to the Recycle Bin. Use Preview first to see what it covers.`,
+      confirmLabel: 'Run cleanup',
+      danger: true
+    }))) return;
     setBusy(`${id}:${mode}`);
     try {
       const res = await fetch('http://127.0.0.1:3333/api/reclaim-run', {

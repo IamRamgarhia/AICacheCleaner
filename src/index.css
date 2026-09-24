@@ -5,6 +5,7 @@
    "100% Local Execution — zero data leaves your machine" guarantee, since it
    sent a request to Google each time the app opened. */
 @import './lib/tokens.css';
+@import './lib/shell.css';
 
 :root {
   --bg-dark: #0b0f19;

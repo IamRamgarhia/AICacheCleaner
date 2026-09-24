@@ -29,6 +29,10 @@ export type AICacheItem = {
   /** Empty space inside a virtual disk file that compacting returns to the
    *  drive (file size minus what the tool reports storing). */
   trappedBytes?: number;
+  /** Copy-paste command for items removed by the tool itself (e.g. `ollama rm`). */
+  manualCommand?: string;
+  /** One sentence on why the safety tier is right, citing the tool's behaviour. */
+  evidence?: string;
 };
 
 export type AIProcessItem = {

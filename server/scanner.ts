@@ -4,6 +4,10 @@ import type { AICacheItem, SafetyTier } from '../src/types';
 import { mapLimit, pathExists, readdirSafe, statSafe } from './fsAsync';
 import { discoverAITools } from './aiToolRegistry';
 import { dockerStoredBytes } from './dockerUsage';
+import { scanModelStores } from './modelStores';
+import { scanAppCaches } from './appCaches';
+import { stableId } from './ids';
+import { fastMeasure } from './fastMeasure';
 
 // How many directory reads / file stats may be in flight at once. High enough
 // to keep the disk busy, low enough to stay well under the fd limit.
@@ -42,6 +46,16 @@ export function calculateNonOverlappingSize(items: AICacheItem[]): number {
   return totalBytes;
 }
 
+/**
+ * Bytes a file really occupies. On macOS/Linux a sparse file (Docker.raw) has
+ * a huge apparent size but few allocated blocks — du reports blocks, so do we.
+ * Windows stats carry no block count; the size there is already right for
+ * everything we measure (the Docker VHDX is not sparse).
+ */
+export function sizeOnDisk(s: { size: number; blocks?: number }): number {
+  return process.platform !== 'win32' && typeof s.blocks === 'number' && s.blocks >= 0 ? s.blocks * 512 : s.size;
+}
+
 /** Days since the newest file inside a directory was written. */
 export function idleDaysFor(newestMtimeMs: number): number | undefined {
   if (!newestMtimeMs) return undefined;
@@ -67,10 +81,18 @@ export async function getDirectorySize(dirPath: string): Promise<number> {
  * mtime does not change when a file several levels down is edited, so the
  * folder timestamp alone is worthless for staleness.
  */
-export async function measureDirectory(dirPath: string): Promise<{ bytes: number; newestMtimeMs: number }> {
+export async function measureDirectory(
+  dirPath: string,
+  priority: 'high' | 'low' = 'high'
+): Promise<{ bytes: number; newestMtimeMs: number }> {
   const rootStat = await statSafe(dirPath);
   if (!rootStat) return { bytes: 0, newestMtimeMs: 0 };
-  if (!rootStat.isDirectory()) return { bytes: rootStat.size, newestMtimeMs: rootStat.mtimeMs };
+  if (!rootStat.isDirectory()) return { bytes: sizeOnDisk(rootStat), newestMtimeMs: rootStat.mtimeMs };
+
+  // Windows: sizes straight from the directory listing (see fastMeasure.ts).
+  // Null means the helper is unavailable; fall through to the portable walk.
+  const fast = await fastMeasure(dirPath, priority);
+  if (fast) return fast;
 
   let newestMtimeMs = 0;
   let totalSize = 0;
@@ -95,7 +117,7 @@ export async function measureDirectory(dirPath: string): Promise<{ bytes: number
       let newest = 0;
       for (const s of stats) {
         if (!s) continue;
-        size += s.size;
+        size += sizeOnDisk(s);
         if (s.mtimeMs > newest) newest = s.mtimeMs;
       }
 
@@ -225,7 +247,8 @@ async function buildProjectItem(
   root: string,
   descriptor: string
 ): Promise<AICacheItem | null> {
-  const size = await getDirectorySize(projectPath);
+  const measured = await measureDirectory(projectPath);
+  const size = measured.bytes;
   if (size <= 0) return null;
 
   const stat = await statSafe(projectPath);
@@ -248,7 +271,8 @@ async function buildProjectItem(
     impactDescription: `Verified ${descriptor} on Drive ${drive}.${runnable ? ' Runnable on Localhost.' : ''}`,
     lastModified: stat.mtime.toISOString().split('T')[0],
     safeReason: 'Your source code — this app only reports its size. Remove a project yourself if you mean to.',
-    isRunnableProject: runnable
+    isRunnableProject: runnable,
+    idleDays: idleDaysFor(measured.newestMtimeMs)
   };
 }
 
@@ -359,7 +383,7 @@ async function scanDiscoveredToolFolders(known: AICacheItem[]): Promise<AICacheI
     const lockedBecause = await lockReason(dir);
     const kind = lockedBecause === 'program files' ? 'installed app' : locationKind(dir);
     const item: AICacheItem = {
-      id: `discovered-${dir.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      id: stableId('discovered', dir),
       name: `${tool.name} — ${path.basename(dir)} (${kind})`,
       category: tool.name,
       path: dir,
@@ -388,13 +412,38 @@ async function scanDiscoveredToolFolders(known: AICacheItem[]): Promise<AICacheI
   return found.filter((item, idx) => !found.slice(0, idx).some(prev => overlaps(prev.path, item.path)));
 }
 
+/** What the scan is doing right now, for the status bar. */
+export interface ScanProgress { running: boolean; phase: string; done: number; total: number; startedAt: number }
+let progress: ScanProgress = { running: false, phase: '', done: 0, total: 0, startedAt: 0 };
+export const getScanProgress = (): ScanProgress => progress;
+function setScanPhase(phase: string, total = 0): void { progress = { ...progress, phase, done: 0, total }; }
+function tickScan(): void { progress = { ...progress, done: progress.done + 1 }; }
+
 export async function scanAICaches(): Promise<AICacheItem[]> {
+  progress = { running: true, phase: 'Starting', done: 0, total: 0, startedAt: Date.now() };
+  try {
+    return await scanAllLocations();
+  } finally {
+    progress = { ...progress, running: false, phase: '' };
+  }
+}
+
+async function scanAllLocations(): Promise<AICacheItem[]> {
   const homeDir = os.homedir();
   const isWindows = process.platform === 'win32';
   const appData = process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
   const localAppData = process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
 
   const targets: AICacheItem[] = [];
+
+  // Pick the path for this OS; '' means "not on this platform" (stat fails, skipped).
+  const onOS = (p: { win?: string; mac?: string; linux?: string }): string =>
+    (process.platform === 'win32' ? p.win : process.platform === 'darwin' ? p.mac : p.linux) ?? '';
+  const macSupport = path.join(homeDir, 'Library', 'Application Support');
+  const macCaches = path.join(homeDir, 'Library', 'Caches');
+  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config');
+  const xdgCache = process.env.XDG_CACHE_HOME || path.join(homeDir, '.cache');
+  const xdgData = process.env.XDG_DATA_HOME || path.join(homeDir, '.local', 'share');
 
   const scanDefinitions = [
     {
@@ -471,7 +520,7 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       id: 'claude-appdata-roaming',
       name: 'Claude Desktop User Data & Chat Databases (C:)',
       category: 'Claude' as const,
-      path: isWindows ? path.join(appData, 'Claude') : path.join(homeDir, 'Library', 'Application Support', 'Claude'),
+      path: onOS({ win: path.join(appData, 'Claude'), mac: path.join(macSupport, 'Claude'), linux: path.join(xdgConfig, 'Claude') }),
       tier: 'YELLOW' as SafetyTier,
       canDelete: true,
       impactDescription: 'Contains Claude Desktop offline chat databases, session keys, and custom MCP settings.',
@@ -521,7 +570,7 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       id: 'cursor-appdata-roaming',
       name: 'Cursor Application Data & Workspace Storage (C:)',
       category: 'Cursor' as const,
-      path: isWindows ? path.join(appData, 'Cursor') : path.join(homeDir, 'Library', 'Application Support', 'Cursor'),
+      path: onOS({ win: path.join(appData, 'Cursor'), mac: path.join(macSupport, 'Cursor'), linux: path.join(xdgConfig, 'Cursor') }),
       tier: 'YELLOW' as SafetyTier,
       canDelete: true,
       impactDescription: 'Cursor workspace storage, extensions state, and session settings.',
@@ -563,7 +612,7 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       // Windows keeps this at %LOCALAPPDATA%\pip\Cache. The previous entry only
       // checked the Linux/macOS path (~/.cache/pip), so on Windows — the app's
       // only supported platform — it never matched.
-      path: isWindows ? path.join(localAppData, 'pip', 'Cache') : path.join(homeDir, '.cache', 'pip'),
+      path: onOS({ win: path.join(localAppData, 'pip', 'Cache'), mac: path.join(macCaches, 'pip'), linux: path.join(xdgCache, 'pip') }),
       tier: 'GREEN' as SafetyTier,
       canDelete: true,
       impactDescription: 'Downloaded Python wheels and build artifacts. pip re-downloads on demand.',
@@ -603,7 +652,7 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       id: 'yarn-cache',
       name: 'Yarn download cache',
       category: 'VS Code Extension' as const,
-      path: isWindows ? path.join(localAppData, 'Yarn', 'Cache') : path.join(homeDir, '.cache', 'yarn'),
+      path: onOS({ win: path.join(localAppData, 'Yarn', 'Cache'), mac: path.join(macCaches, 'Yarn'), linux: path.join(xdgCache, 'yarn') }),
       tier: 'GREEN' as SafetyTier,
       canDelete: true,
       impactDescription: 'Packages Yarn has downloaded.',
@@ -667,37 +716,39 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       id: 'user-temp',
       name: 'Temporary files (your account)',
       category: 'Dev Toolchain' as const,
-      path: path.join(localAppData, 'Temp'),
-      tier: 'GREEN' as SafetyTier,
-      canDelete: true,
-      impactDescription: 'Installer leftovers, extracted archives and scratch files from every app you run.',
-      safeReason: 'Safe to delete. Files still open are skipped automatically; everything else is scratch space.'
+      path: onOS({ win: path.join(localAppData, 'Temp') }),
+      tier: 'YELLOW' as SafetyTier,
+      canDelete: false,
+      impactDescription: 'Installer leftovers, extracted archives and scratch files. Empty it with Settings → System → Storage → Temporary files (or Disk Cleanup), which keeps the folder and skips files in use.',
+      safeReason: 'Not deleted from here: removing the Temp folder itself breaks apps that expect it. Windows\' Storage settings empty it safely.'
     },
     {
       id: 'windows-temp',
       name: 'Temporary files (system)',
       category: 'Dev Toolchain' as const,
-      path: path.join(process.env.SystemRoot || 'C:\\Windows', 'Temp'),
-      tier: 'GREEN' as SafetyTier,
-      canDelete: true,
-      impactDescription: 'System-wide scratch files.',
-      safeReason: 'Safe to delete. Recreated as needed; in-use files are skipped.'
+      path: onOS({ win: path.join(process.env.SystemRoot || 'C:\\Windows', 'Temp') }),
+      tier: 'YELLOW' as SafetyTier,
+      canDelete: false,
+      impactDescription: 'System-wide scratch files. Empty it with Disk Cleanup → Clean up system files → Temporary files.',
+      safeReason: 'Not deleted from here: it is a system folder that needs admin rights; Disk Cleanup empties it safely.'
     },
     {
       id: 'windows-update-cache',
       name: 'Windows Update download cache',
       category: 'Dev Toolchain' as const,
-      path: path.join(process.env.SystemRoot || 'C:\\Windows', 'SoftwareDistribution', 'Download'),
-      tier: 'GREEN' as SafetyTier,
-      canDelete: true,
-      impactDescription: 'Installers for updates already applied.',
-      safeReason: 'Safe to delete. Windows re-downloads anything it still needs.'
+      path: onOS({ win: path.join(process.env.SystemRoot || 'C:\\Windows', 'SoftwareDistribution', 'Download') }),
+      // Not deletable from here: it needs admin rights and can hold a pending
+      // update. Windows' own Disk Cleanup handles it (see Windows & system tips).
+      tier: 'RED' as SafetyTier,
+      canDelete: false,
+      impactDescription: 'Update installers Windows downloaded. Clear it with Disk Cleanup → Clean up system files → Windows Update Cleanup.',
+      safeReason: 'Managed by Windows: remove it with Disk Cleanup, not by deleting the folder.'
     },
     {
       id: 'crash-dumps',
       name: 'Application crash dumps',
       category: 'Dev Toolchain' as const,
-      path: path.join(localAppData, 'CrashDumps'),
+      path: onOS({ win: path.join(localAppData, 'CrashDumps') }),
       tier: 'GREEN' as SafetyTier,
       canDelete: true,
       impactDescription: 'Memory dumps written when an app crashed.',
@@ -707,17 +758,17 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       id: 'thumbnail-cache',
       name: 'Explorer thumbnail cache',
       category: 'Dev Toolchain' as const,
-      path: path.join(localAppData, 'Microsoft', 'Windows', 'Explorer'),
-      tier: 'GREEN' as SafetyTier,
-      canDelete: true,
-      impactDescription: 'Cached folder thumbnails and icons.',
-      safeReason: 'Safe to delete. Explorer rebuilds thumbnails as you browse.'
+      path: onOS({ win: path.join(localAppData, 'Microsoft', 'Windows', 'Explorer') }),
+      tier: 'YELLOW' as SafetyTier,
+      canDelete: false,
+      impactDescription: 'Cached folder thumbnails and icons. Clear it with Disk Cleanup → Thumbnails; Explorer rebuilds them as you browse.',
+      safeReason: 'Not deleted from here: Explorer keeps these files open, and the folder also holds other Explorer data.'
     },
     {
       id: 'dx-shader-cache',
       name: 'GPU shader caches (DirectX / NVIDIA)',
       category: 'Dev Toolchain' as const,
-      path: path.join(localAppData, 'D3DSCache'),
+      path: onOS({ win: path.join(localAppData, 'D3DSCache') }),
       tier: 'GREEN' as SafetyTier,
       canDelete: true,
       impactDescription: 'Compiled GPU shaders.',
@@ -727,7 +778,7 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       id: 'pnpm-store',
       name: 'pnpm content store',
       category: 'Dev Toolchain' as const,
-      path: path.join(localAppData, 'pnpm', 'store'),
+      path: onOS({ win: path.join(localAppData, 'pnpm', 'store'), mac: path.join(homeDir, 'Library', 'pnpm', 'store'), linux: path.join(xdgData, 'pnpm', 'store') }),
       tier: 'GREEN' as SafetyTier,
       canDelete: true,
       reclaimCommandId: 'pnpm-store-prune',
@@ -738,7 +789,7 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       id: 'composer-cache',
       name: 'Composer cache (PHP)',
       category: 'Dev Toolchain' as const,
-      path: path.join(localAppData, 'Composer'),
+      path: onOS({ win: path.join(localAppData, 'Composer'), mac: path.join(homeDir, '.composer', 'cache'), linux: path.join(xdgCache, 'composer') }),
       tier: 'GREEN' as SafetyTier,
       canDelete: true,
       reclaimCommandId: 'composer-clear-cache',
@@ -755,7 +806,11 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       id: 'docker-wsl-disk',
       name: 'Docker virtual disk (images, containers, volumes)',
       category: 'Dev Toolchain' as const,
-      path: path.join(localAppData, 'Docker', 'wsl', 'disk', 'docker_data.vhdx'),
+      path: onOS({
+        win: path.join(localAppData, 'Docker', 'wsl', 'disk', 'docker_data.vhdx'),
+        mac: path.join(homeDir, 'Library', 'Containers', 'com.docker.docker', 'Data', 'vms', '0', 'data', 'Docker.raw'),
+        linux: path.join(homeDir, '.docker', 'desktop', 'vms', '0', 'data', 'Docker.raw')
+      }),
       // RED: this single file IS your Docker data. Deleting it destroys every
       // image, container and volume. It shrinks by running Docker's own prune,
       // never by removing the file.
@@ -769,7 +824,11 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       id: 'chrome-on-device-model',
       name: 'Chrome on-device AI model (Gemini Nano)',
       category: 'Chrome AI' as const,
-      path: path.join(localAppData, 'Google', 'Chrome', 'User Data', 'OptGuideOnDeviceModel'),
+      path: onOS({
+        win: path.join(localAppData, 'Google', 'Chrome', 'User Data', 'OptGuideOnDeviceModel'),
+        mac: path.join(macSupport, 'Google', 'Chrome', 'OptGuideOnDeviceModel'),
+        linux: path.join(xdgConfig, 'google-chrome', 'OptGuideOnDeviceModel')
+      }),
       tier: 'YELLOW' as SafetyTier,
       canDelete: true,
       impactDescription: 'Model weights Chrome downloads for "Help me write" and scam detection. Chrome downloads it again unless you turn it off.',
@@ -828,8 +887,10 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
     },
   ];
 
+  setScanPhase('Known caches', scanDefinitions.length);
   const scanned = await mapLimit(scanDefinitions, 4, async (def) => {
     const stat = await statSafe(def.path);
+    tickScan();
     if (!stat) return null;
 
     const measured = await measureDirectory(def.path);
@@ -854,8 +915,15 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
 
   for (const item of scanned) if (item) targets.push(item);
 
+  setScanPhase('AI tool folders');
   targets.push(...(await scanDiscoveredToolFolders(targets)));
 
+  setScanPhase('App caches & models');
+  // Models first: the generic cache finder skips anything overlapping them.
+  targets.push(...(await scanModelStores()));
+  targets.push(...(await scanAppCaches(targets)));
+
+  setScanPhase('Projects on other drives');
   const secondaryItems = await scanSecondaryDrives();
   for (const item of secondaryItems) {
     if (!targets.some(t => t.path.toLowerCase() === item.path.toLowerCase())) {
@@ -872,8 +940,10 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
  * space a compact hands back to Windows. Only when Docker answers; no guessing.
  */
 async function withDockerTrappedSpace(items: AICacheItem[]): Promise<AICacheItem[]> {
-  if (!items.some(i => i.id === 'docker-wsl-disk')) return items;
-  const stored = await dockerStoredBytes();
+  if (process.platform !== 'win32' || !items.some(i => i.id === 'docker-wsl-disk')) return items;
+  const disk = items.find(i => i.id === 'docker-wsl-disk');
+  const diskStat = disk ? await statSafe(disk.path) : null;
+  const stored = await dockerStoredBytes(diskStat?.mtimeMs ?? 0);
   if (stored === null) return items;
   return items.map(i => i.id === 'docker-wsl-disk'
     ? { ...i, trappedBytes: Math.max(0, i.sizeBytes - stored) }

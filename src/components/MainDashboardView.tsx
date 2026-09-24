@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { SystemMetrics, AICacheItem } from '../types';
 import { RefreshCw, FolderOpen, Rocket, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { FootprintStrip } from './FootprintStrip';
+import { openItemMenu } from '../lib/itemMenu';
 import '../lib/tokens.css';
 
 interface MainDashboardViewProps {
@@ -86,22 +87,20 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   const largest = [...visible].sort((a, b) => b.sizeBytes - a.sizeBytes).slice(0, 8);
 
   return (
-    <div className="ins-scope" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--ins-space-5)' }}>
+    <div className="ins-page">
       {/* Header: identity left, the one primary action right. */}
-      <header style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'var(--ins-space-4)', flexWrap: 'wrap' }}>
+      <header className="ins-page-head">
         <div>
-          <h1 style={{ fontFamily: 'var(--ins-font-label)', fontSize: '1.5rem', fontWeight: 600, letterSpacing: '-0.01em' }}>
-            Storage overview
-          </h1>
-          <p style={{ fontSize: '0.8125rem', color: 'var(--ins-mist-500)', marginTop: '2px' }}>
+          <h1 className="ins-h1">Storage overview</h1>
+          <p className="ins-sub">
             {metrics
               ? `Last scanned ${new Date(metrics.lastScanTimestamp).toLocaleTimeString()} · runs only when you ask`
               : 'Not scanned yet'}
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: 'var(--ins-space-2)' }}>
-          <button className="ins-btn" onClick={onRefresh} disabled={loading}>
+        <div className="ins-toolbar">
+          <button className="ins-btn" onClick={onRefresh} disabled={loading} title="Rescan (Ctrl+R)">
             <RefreshCw size={14} className={loading ? 'spin' : ''} />
             {loading ? 'Scanning' : 'Rescan'}
           </button>
@@ -204,7 +203,11 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             )}
 
             {largest.map(item => (
-              <tr key={item.id}>
+              <tr
+                key={item.id}
+                onDoubleClick={() => onOpenFolder(item.path)}
+                onContextMenu={e => void openItemMenu(e, item, { onOpenFolder, onDelete: id => onCleanSelected([id]) })}
+              >
                 <td>
                   <div style={{ color: 'var(--ins-mist-50)', marginBottom: '1px' }}>{item.name}</div>
                   <button className="ins-path" onClick={() => onOpenFolder(item.path)} title={item.path}>

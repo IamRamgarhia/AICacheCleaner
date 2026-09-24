@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { AICacheItem } from '../types';
-import { FolderOpen, Trash2, CheckCircle2 } from 'lucide-react';
+import { FolderOpen, Trash2 } from 'lucide-react';
 import { toolColor } from '../lib/toolColors';
+import { formatBytes, idleLabel } from '../lib/format';
+import { openItemMenu } from '../lib/itemMenu';
 import { ReclaimCommands } from './ReclaimCommands';
+import { SystemTips } from './SystemTips';
 
 interface SafeDeleteSectionProps {
   items: AICacheItem[];
@@ -12,13 +15,6 @@ interface SafeDeleteSectionProps {
   loading?: boolean;
 }
 
-function formatBytes(bytes: number): string {
-  if (!bytes || bytes < 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(i >= 3 ? 2 : 1))} ${units[i]}`;
-}
-
 export const SafeDeleteSection: React.FC<SafeDeleteSectionProps> = ({
   items,
   onCleanSelected,
@@ -26,15 +22,17 @@ export const SafeDeleteSection: React.FC<SafeDeleteSectionProps> = ({
   cleaning,
   loading
 }) => {
-  const safeItems = items.filter(i => i.tier === 'GREEN' && i.canDelete);
+  const safeItems = [...items.filter(i => i.tier === 'GREEN' && i.canDelete)].sort((a, b) => b.sizeBytes - a.sizeBytes);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // useState's initialiser only runs on first mount. If this tab was the one
-  // restored from localStorage, it mounted before the scan returned and the
-  // pre-selection stayed permanently empty. Sync when the item set changes.
+  // New safe items start selected; ones the user has already seen keep
+  // whatever they chose, so a rescan never re-ticks something they unticked.
+  const seen = useRef(new Set<string>());
   useEffect(() => {
-    setSelectedIds(safeItems.map(i => i.id));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const green = items.filter(i => i.tier === 'GREEN' && i.canDelete).map(i => i.id);
+    const fresh = green.filter(id => !seen.current.has(id));
+    fresh.forEach(id => seen.current.add(id));
+    setSelectedIds(prev => [...prev.filter(id => green.includes(id)), ...fresh]);
   }, [items]);
 
   const selectedBytes = safeItems
@@ -65,105 +63,93 @@ export const SafeDeleteSection: React.FC<SafeDeleteSectionProps> = ({
         <div>
           <h1 className="ins-h1">Safe to delete</h1>
           <p className="ins-sub">
-            Temporary graphics caches, compiled bytecode and diagnostic logs. Every item here is rebuilt
-            automatically the next time the tool starts — no project code, settings or chat history is touched.
+            Caches the tools rebuild on their own — web and code caches, GPU shaders, package downloads. No project code,
+            settings, logins or chat history. Everything goes to the Recycle Bin after you confirm.
           </p>
         </div>
+      </header>
 
+      <div className="ins-actionbar">
+        <label className="ins-check">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={e => setSelectedIds(e.target.checked ? safeItems.map(i => i.id) : [])}
+          />
+          Select all
+        </label>
+        <span className="ins-meta">{selectedIds.length} of {safeItems.length} selected</span>
         <button
           className="ins-btn ins-btn--primary"
+          style={{ marginLeft: 'auto' }}
           disabled={selectedIds.length === 0 || cleaning}
           onClick={() => onCleanSelected(selectedIds)}
         >
           <Trash2 size={14} />
           {cleaning ? 'Cleaning…' : `Reclaim ${formatBytes(selectedBytes)}`}
         </button>
-      </header>
+      </div>
 
-      {safeItems.length > 0 && (
-        <div
-          className="ins-panel"
-          style={{ padding: '10px var(--ins-space-4)', display: 'flex', alignItems: 'center', gap: 'var(--ins-space-4)' }}
-        >
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8125rem', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={allSelected}
-              onChange={e => setSelectedIds(e.target.checked ? safeItems.map(i => i.id) : [])}
-            />
-            Select all
-          </label>
-          <span className="ins-meta">
-            {selectedIds.length} of {safeItems.length} selected
-          </span>
-          <span className="ins-data" style={{ marginLeft: 'auto', color: 'var(--ins-safe)', fontSize: '0.875rem' }}>
-            {formatBytes(selectedBytes)}
-          </span>
-        </div>
-      )}
-
-      {loading && safeItems.length === 0 ? (
-        <div className="ins-empty">
-          <strong>Scanning for safe caches…</strong>
-          Measuring each cache location on your drives.
-        </div>
-      ) : safeItems.length === 0 ? (
-        <div className="ins-empty">
-          <strong>Nothing to reclaim right now</strong>
-          No auto-rebuilding caches were found. Run a scan from the overview, or check All locations for
-          items that need your review.
-        </div>
-      ) : (
-        <div className="ins-grid">
-          {safeItems.map(item => {
-            const isSelected = selectedIds.includes(item.id);
-            return (
-              <div key={item.id} className={`ins-card ins-card--tool${isSelected ? ' ins-card--selected' : ''}`}
-                style={{ borderLeftColor: toolColor(item.category) }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => toggleSelect(item.id)}
-                    style={{ marginTop: '2px', flexShrink: 0 }}
-                    aria-label={`Select ${item.name}`}
-                  />
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div className="ins-card-title">{item.name}</div>
-                    <span className="ins-meta ins-tool-name"><span className="ins-dot" style={{ background: toolColor(item.category) }} />{item.category}</span>
-                  </div>
-                  <span className="ins-tier ins-tier--safe">Rebuilds itself</span>
-                </div>
-
-                <button className="ins-path" onClick={() => handleOpenFolder(item.path)} title={item.path}>
-                  {item.path}
-                </button>
-
-                <div className="ins-well">{item.safeReason || item.impactDescription}</div>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--ins-space-2)', marginTop: 'auto' }}>
-                  <div>
-                    <div className="ins-data" style={{ fontSize: '1rem', color: 'var(--ins-mist-50)' }}>
-                      {item.formattedSize}
+      <div className="ins-panel ins-split-list">
+        {loading && safeItems.length === 0 ? (
+          <div className="ins-empty">
+            <strong>Scanning for safe caches…</strong>
+            Measuring each cache location on your drives.
+          </div>
+        ) : safeItems.length === 0 ? (
+          <div className="ins-empty">
+            <strong>Nothing to reclaim right now</strong>
+            No auto-rebuilding caches were found. Rescan, or check All locations for items that need your review.
+          </div>
+        ) : (
+          <table className="ins-table ins-table--interactive">
+            <thead>
+              <tr>
+                <th style={{ width: '32px' }} />
+                <th>Cache</th>
+                <th style={{ width: '120px' }}>Last used</th>
+                <th style={{ width: '96px' }} className="ins-num">Size</th>
+                <th style={{ width: '84px' }} />
+              </tr>
+            </thead>
+            <tbody>
+              {safeItems.map(item => (
+                <tr
+                  key={item.id}
+                  onClick={() => toggleSelect(item.id)}
+                  onContextMenu={e => void openItemMenu(e, item, { onOpenFolder: handleOpenFolder, onDelete: id => onCleanSelected([id]) })}
+                  title={item.safeReason || item.impactDescription}
+                >
+                  <td onClick={e => e.stopPropagation()}>
+                    <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelect(item.id)} aria-label={`Select ${item.name}`} />
+                  </td>
+                  <td>
+                    <span className="ins-tool-name">
+                      <span className="ins-dot" style={{ background: toolColor(item.category) }} />
+                      <span style={{ color: 'var(--ins-mist-50)' }}>{item.name}</span>
+                    </span>
+                    <span className="ins-path">{item.impactDescription}</span>
+                  </td>
+                  <td className="ins-meta ins-data">{idleLabel(item.idleDays, item.lastModified)}</td>
+                  <td className="ins-num ins-data">{item.formattedSize}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '2px', justifyContent: 'flex-end' }}>
+                      <button className="ins-btn ins-btn--quiet" onClick={e => { e.stopPropagation(); handleOpenFolder(item.path); }} title="Open folder" aria-label={`Open ${item.name}`}>
+                        <FolderOpen size={12} />
+                      </button>
+                      <button className="ins-btn ins-btn--quiet" onClick={e => { e.stopPropagation(); onCleanSelected([item.id]); }} title="Delete just this one" aria-label={`Delete ${item.name}`}>
+                        <Trash2 size={12} />
+                      </button>
                     </div>
-                    <span className="ins-meta">Modified {item.lastModified}</span>
-                  </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
 
-                  <div style={{ display: 'flex', gap: '2px' }}>
-                    <button className="ins-btn ins-btn--quiet" onClick={() => handleOpenFolder(item.path)}>
-                      <FolderOpen size={13} /> Open
-                    </button>
-                    <button className="ins-btn ins-btn--quiet" onClick={() => onCleanSelected([item.id])}>
-                      <CheckCircle2 size={13} /> Reclaim
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
+      <SystemTips onOpenFolder={handleOpenFolder} />
       <ReclaimCommands />
     </div>
   );

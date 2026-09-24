@@ -4,7 +4,8 @@
   "copyright": "Copyright © 2026 Dice Codes (https://dicecodes.com/)",
   "electronVersion": "34.0.0",
   "directories": {
-    "output": "dist-electron"
+    "output": "dist-electron",
+    "buildResources": "build"
   },
   "files": [
     "dist/**/*",
@@ -30,18 +31,28 @@
     "target": [
       {
         "target": "nsis",
-        "arch": ["x64"]
+        "arch": [
+          "x64"
+        ]
       },
       {
         "target": "portable",
-        "arch": ["x64"]
+        "arch": [
+          "x64"
+        ]
       }
     ],
-    "requestedExecutionLevel": "asInvoker"
+    "requestedExecutionLevel": "asInvoker",
+    "icon": "build/icon.ico"
   },
   "mac": {
     "artifactName": "AICacheCleaner-macOS-${version}.${ext}",
-    "target": ["dmg", "zip"],
-    "category": "public.app-category.utilities"
-  }
+    "target": [
+      "dmg",
+      "zip"
+    ],
+    "category": "public.app-category.utilities",
+    "icon": "build/icon.png"
+  },
+  "electronDist": "node_modules/electron/dist"
 }
