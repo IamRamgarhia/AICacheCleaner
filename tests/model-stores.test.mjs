@@ -48,6 +48,11 @@ const write = (file, content) => {
   fs.writeFileSync(file, content);
 };
 const bytes = n => Buffer.alloc(n, 1);
+// Folder sizes are the space files use on disk (blocks on macOS/Linux).
+const onDisk = (...files) => files.reduce((sum, f) => {
+  const st = fs.statSync(f);
+  return sum + (process.platform === 'win32' ? st.size : st.blocks * 512);
+}, 0);
 const hex = c => c.repeat(64);
 const none = { huggingfaceHub: [], ollamaModels: [], lmStudioModels: [] };
 const scan = roots => lib.scanModelStores({ ...none, ...roots });
@@ -73,7 +78,8 @@ test('hub model and dataset dirs become one item each, sized from their files', 
   ]);
 
   const llama = items['Hugging Face model: meta-llama/Llama-3-8B'];
-  assert.equal(llama.sizeBytes, 340);
+  const llamaDir = path.join(hub, 'models--meta-llama--Llama-3-8B');
+  assert.equal(llama.sizeBytes, onDisk(path.join(llamaDir, 'blobs', 'a'), path.join(llamaDir, 'refs', 'main')));
   assert.equal(llama.category, 'HuggingFace');
   assert.equal(llama.tier, 'YELLOW');
   assert.equal(llama.canDelete, true);
@@ -84,7 +90,7 @@ test('hub model and dataset dirs become one item each, sized from their files', 
   assert.match(llama.lastModified, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(llama.idleDays, 0);
   assert.equal(llama.path, path.join(hub, 'models--meta-llama--Llama-3-8B'));
-  assert.equal(items['Hugging Face dataset: squad/v2'].sizeBytes, 120);
+  assert.equal(items['Hugging Face dataset: squad/v2'].sizeBytes, onDisk(path.join(hub, 'datasets--squad--v2', 'blobs', 'b')));
 });
 
 test('ids are stable across scans', async () => {
@@ -192,7 +198,8 @@ test('lm studio publisher/model dirs become one item each', async () => {
     'LM Studio model: lmstudio-community/Qwen-7B-GGUF'
   ]);
   const qwen = items['LM Studio model: lmstudio-community/Qwen-7B-GGUF'];
-  assert.equal(qwen.sizeBytes, 1000);
+  const qwenDir = path.join(root, 'lmstudio-community', 'Qwen-7B-GGUF');
+  assert.equal(qwen.sizeBytes, onDisk(path.join(qwenDir, 'model.Q4.gguf'), path.join(qwenDir, 'model.Q8.gguf')));
   assert.equal(qwen.category, 'LM Studio');
   assert.equal(qwen.canDelete, true);
   assert.equal(qwen.tier, 'YELLOW');

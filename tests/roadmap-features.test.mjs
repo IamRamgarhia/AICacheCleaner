@@ -52,6 +52,9 @@ after(() => {
   fs.rmSync(outDir, { recursive: true, force: true });
 });
 
+// Space a file really uses (blocks on macOS/Linux), which is what the app reports.
+const onDisk = f => { const s = fs.statSync(f); return process.platform === 'win32' ? s.size : s.blocks * 512; };
+
 const write = (p, bytes = 10) => {
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, Buffer.alloc(bytes, 1));
@@ -189,12 +192,14 @@ test('live folder inspection lists entries before they are all measured', async 
   const full = await lib.inspectFolder(dir, 10, false);
   assert.equal(full.done, true);
   assert.deepEqual(full.children.map(c => c.name), ['big', 'small.txt']);
-  assert.equal(full.children[0].bytes, 50_000);
+  assert.equal(full.children[0].bytes, onDisk(path.join(dir, 'big', 'x.bin')));
 });
 
 // --- The real delete path ----------------------------------------------------------------
 
 test('delete goes to the Recycle Bin and restores back intact', { skip: !isWin }, async () => {
+  // On CI the temp dir is an 8.3 short name (RUNNER~1); restore must still
+  // find the item, which the Recycle Bin records under its long name.
   const dir = path.join(os.tmpdir(), `aicc-roundtrip-${Date.now()}`);
   write(path.join(dir, 'keep.txt'), 64);
   const res = await lib.deleteItemsSafely([dir]);

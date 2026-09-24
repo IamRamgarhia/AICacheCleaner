@@ -47,6 +47,10 @@ before(() => {
   }
 });
 
+// Build paths with this OS's separator: the helpers use path.sep, as the app
+// only ever sees native paths.
+const P = (...parts) => (process.platform === 'win32' ? parts.join('\\') : '/' + parts.slice(1).join('/'));
+
 const item = (p, sizeBytes) => ({
   id: p,
   name: p,
@@ -64,16 +68,16 @@ test('nested paths are counted once, not twice', () => {
   // A parent cache and one of its children both appear in a scan. Counting both
   // would inflate the reported footprint and the "reclaimable" figure.
   const total = lib.calculateNonOverlappingSize([
-    item('C:\\Users\\me\\AppData\\Roaming\\Claude', 1000),
-    item('C:\\Users\\me\\AppData\\Roaming\\Claude\\Cache', 400)
+    item(P('C:', 'Users', 'me', 'AppData', 'Roaming', 'Claude'), 1000),
+    item(P('C:', 'Users', 'me', 'AppData', 'Roaming', 'Claude', 'Cache'), 400)
   ]);
   assert.equal(total, 1000, 'child must not be added on top of its parent');
 });
 
 test('sibling paths are both counted', () => {
   const total = lib.calculateNonOverlappingSize([
-    item('C:\\a\\one', 100),
-    item('C:\\a\\two', 250)
+    item(P('C:', 'a', 'one'), 100),
+    item(P('C:', 'a', 'two'), 250)
   ]);
   assert.equal(total, 350);
 });
@@ -82,16 +86,16 @@ test('a path that merely shares a name prefix is not treated as nested', () => {
   // "Claude2" starts with "Claude" as a string but is a different directory.
   // A naive startsWith() check without the separator would swallow it.
   const total = lib.calculateNonOverlappingSize([
-    item('C:\\x\\Claude', 100),
-    item('C:\\x\\Claude2', 200)
+    item(P('C:', 'x', 'Claude'), 100),
+    item(P('C:', 'x', 'Claude2'), 200)
   ]);
   assert.equal(total, 300, 'Claude2 is a sibling of Claude, not a child');
 });
 
-test('nesting comparison ignores case, as Windows paths do', () => {
+test('nesting comparison ignores case, as Windows paths do', { skip: process.platform === 'linux' && 'Linux paths are case-sensitive' }, () => {
   const total = lib.calculateNonOverlappingSize([
-    item('C:\\Users\\Me\\Claude', 500),
-    item('c:\\users\\me\\claude\\Cache', 300)
+    item(P('C:', 'Users', 'Me', 'Claude'), 500),
+    item(P('c:', 'users', 'me', 'claude', 'Cache'), 300)
   ]);
   assert.equal(total, 500);
 });

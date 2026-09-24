@@ -21,22 +21,24 @@ export function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+// Windows and (by default) macOS file systems ignore case; Linux does not,
+// where /data/A and /data/a are different folders.
+const foldCase = (p: string) => (process.platform === 'linux' ? p : p.toLowerCase());
+
 // Prevents double-counting nested subfolders
 export function calculateNonOverlappingSize(items: AICacheItem[]): number {
   if (!items || items.length === 0) return 0;
-  
+
   const sorted = [...items].sort((a, b) => a.path.length - b.path.length);
   const countedRoots: string[] = [];
   let totalBytes = 0;
 
   for (const item of sorted) {
-    const normPath = path.normalize(item.path).toLowerCase();
-    
+    const normPath = foldCase(path.normalize(item.path));
     const isEnclosed = countedRoots.some(root => {
-      const normRoot = path.normalize(root).toLowerCase();
+      const normRoot = foldCase(path.normalize(root));
       return normPath === normRoot || normPath.startsWith(normRoot + path.sep);
     });
-
     if (!isEnclosed) {
       countedRoots.push(item.path);
       totalBytes += item.sizeBytes;
