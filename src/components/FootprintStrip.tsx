@@ -72,7 +72,7 @@ export const FootprintStrip: React.FC<FootprintStripProps> = ({
   return (
     <div className="ins-panel" style={{ padding: 'var(--ins-space-5)' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 'var(--ins-space-4)' }}>
-        <span className="ins-label">AI footprint on this machine</span>
+        <span className="ins-label">Tracked on this machine</span>
         <span className="ins-data" style={{ fontSize: '1.75rem', fontWeight: 500, letterSpacing: '-0.02em' }}>
           {formatBytes(totalBytes)}
         </span>

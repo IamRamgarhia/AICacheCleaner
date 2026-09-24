@@ -2,6 +2,12 @@ import path from 'path';
 import os from 'os';
 import type { AICacheItem, SafetyTier } from '../src/types';
 import { mapLimit, pathExists, readdirSafe, statSafe } from './fsAsync';
+import { discoverAITools } from './aiToolRegistry';
+import { dockerStoredBytes } from './dockerUsage';
+import { scanModelStores } from './modelStores';
+import { scanAppCaches } from './appCaches';
+import { stableId } from './ids';
+import { fastMeasure } from './fastMeasure';
 
 // How many directory reads / file stats may be in flight at once. High enough
 // to keep the disk busy, low enough to stay well under the fd limit.
@@ -15,22 +21,24 @@ export function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+// Windows and (by default) macOS file systems ignore case; Linux does not,
+// where /data/A and /data/a are different folders.
+const foldCase = (p: string) => (process.platform === 'linux' ? p : p.toLowerCase());
+
 // Prevents double-counting nested subfolders
 export function calculateNonOverlappingSize(items: AICacheItem[]): number {
   if (!items || items.length === 0) return 0;
-  
+
   const sorted = [...items].sort((a, b) => a.path.length - b.path.length);
   const countedRoots: string[] = [];
   let totalBytes = 0;
 
   for (const item of sorted) {
-    const normPath = path.normalize(item.path).toLowerCase();
-    
+    const normPath = foldCase(path.normalize(item.path));
     const isEnclosed = countedRoots.some(root => {
-      const normRoot = path.normalize(root).toLowerCase();
+      const normRoot = foldCase(path.normalize(root));
       return normPath === normRoot || normPath.startsWith(normRoot + path.sep);
     });
-
     if (!isEnclosed) {
       countedRoots.push(item.path);
       totalBytes += item.sizeBytes;
@@ -38,6 +46,22 @@ export function calculateNonOverlappingSize(items: AICacheItem[]): number {
   }
 
   return totalBytes;
+}
+
+/**
+ * Bytes a file really occupies. On macOS/Linux a sparse file (Docker.raw) has
+ * a huge apparent size but few allocated blocks — du reports blocks, so do we.
+ * Windows stats carry no block count; the size there is already right for
+ * everything we measure (the Docker VHDX is not sparse).
+ */
+export function sizeOnDisk(s: { size: number; blocks?: number }): number {
+  return process.platform !== 'win32' && typeof s.blocks === 'number' && s.blocks >= 0 ? s.blocks * 512 : s.size;
+}
+
+/** Days since the newest file inside a directory was written. */
+export function idleDaysFor(newestMtimeMs: number): number | undefined {
+  if (!newestMtimeMs) return undefined;
+  return Math.max(0, Math.round((Date.now() - newestMtimeMs) / 86_400_000));
 }
 
 // Breadth-first, bounded-concurrency directory size calculation.
@@ -49,10 +73,30 @@ export function calculateNonOverlappingSize(items: AICacheItem[]): number {
 // stopped responding. Every await below is a yield point, so the server stays
 // responsive while the disk work happens.
 export async function getDirectorySize(dirPath: string): Promise<number> {
-  const rootStat = await statSafe(dirPath);
-  if (!rootStat) return 0;
-  if (!rootStat.isDirectory()) return rootStat.size;
+  return (await measureDirectory(dirPath)).bytes;
+}
 
+/**
+ * Size AND newest-file timestamp in one walk.
+ *
+ * The newest mtime is what tells you a folder is abandoned. A directory's own
+ * mtime does not change when a file several levels down is edited, so the
+ * folder timestamp alone is worthless for staleness.
+ */
+export async function measureDirectory(
+  dirPath: string,
+  priority: 'high' | 'low' = 'high'
+): Promise<{ bytes: number; newestMtimeMs: number }> {
+  const rootStat = await statSafe(dirPath);
+  if (!rootStat) return { bytes: 0, newestMtimeMs: 0 };
+  if (!rootStat.isDirectory()) return { bytes: sizeOnDisk(rootStat), newestMtimeMs: rootStat.mtimeMs };
+
+  // Windows: sizes straight from the directory listing (see fastMeasure.ts).
+  // Null means the helper is unavailable; fall through to the portable walk.
+  const fast = await fastMeasure(dirPath, priority);
+  if (fast) return fast;
+
+  let newestMtimeMs = 0;
   let totalSize = 0;
   let frontier: string[] = [dirPath];
 
@@ -72,20 +116,26 @@ export async function getDirectorySize(dirPath: string): Promise<number> {
 
       const stats = await mapLimit(filePaths, IO_CONCURRENCY, statSafe);
       let size = 0;
-      for (const s of stats) if (s) size += s.size;
+      let newest = 0;
+      for (const s of stats) {
+        if (!s) continue;
+        size += sizeOnDisk(s);
+        if (s.mtimeMs > newest) newest = s.mtimeMs;
+      }
 
-      return { size, childDirs };
+      return { size, childDirs, newest };
     });
 
     const nextFrontier: string[] = [];
     for (const result of levelResults) {
       totalSize += result.size;
+      if (result.newest > newestMtimeMs) newestMtimeMs = result.newest;
       nextFrontier.push(...result.childDirs);
     }
     frontier = nextFrontier;
   }
 
-  return totalSize;
+  return { bytes: totalSize, newestMtimeMs };
 }
 
 // File extensions that mark a directory as a downloaded-media folder rather
@@ -199,7 +249,8 @@ async function buildProjectItem(
   root: string,
   descriptor: string
 ): Promise<AICacheItem | null> {
-  const size = await getDirectorySize(projectPath);
+  const measured = await measureDirectory(projectPath);
+  const size = measured.bytes;
   if (size <= 0) return null;
 
   const stat = await statSafe(projectPath);
@@ -211,16 +262,19 @@ async function buildProjectItem(
   return {
     id,
     name,
-    category: 'Antigravity',
+    // Was hardcoded 'Antigravity', which filed every project on D: under one
+    // AI tool. And a project is source code: shown for size, never deletable.
+    category: 'Your projects',
     path: projectPath,
     sizeBytes: size,
     formattedSize: formatBytes(size),
     tier: 'YELLOW',
-    canDelete: true,
+    canDelete: false,
     impactDescription: `Verified ${descriptor} on Drive ${drive}.${runnable ? ' Runnable on Localhost.' : ''}`,
     lastModified: stat.mtime.toISOString().split('T')[0],
-    safeReason: `Project folder located on Drive ${drive}. Contains AI project files, node_modules, or code transcripts.`,
-    isRunnableProject: runnable
+    safeReason: 'Your source code — this app only reports its size. Remove a project yourself if you mean to.',
+    isRunnableProject: runnable,
+    idleDays: idleDaysFor(measured.newestMtimeMs)
   };
 }
 
@@ -274,13 +328,124 @@ async function scanSecondaryDrives(): Promise<AICacheItem[]> {
   return items;
 }
 
+function overlaps(a: string, b: string): boolean {
+  const x = path.normalize(a).toLowerCase();
+  const y = path.normalize(b).toLowerCase();
+  return x === y || x.startsWith(y + path.sep) || y.startsWith(x + path.sep);
+}
+
+/** Where a folder sits, so two folders both named "Antigravity IDE" are told apart. */
+function locationKind(dir: string): string {
+  const d = dir.toLowerCase();
+  if (d.includes(`${path.sep}programs${path.sep}`) || d.includes('program files')) return 'installed app';
+  if (d.includes(`${path.sep}roaming${path.sep}`)) return 'settings & state';
+  if (d.includes(`${path.sep}.cache${path.sep}`) || d.includes(`${path.sep}local${path.sep}`)) return 'local data';
+  return 'user folder';
+}
+
+const LOCK_MARKERS: { match: RegExp; reason: string }[] = [
+  { match: /^(update\.exe|app-\d[\w.]*|.+\.exe)$/i, reason: 'program files' },
+  { match: /^(\.git|package\.json|pyproject\.toml)$/i, reason: 'source code or a git repository' },
+  { match: /^(auth\.json|\.?credentials(\.json)?|.+\.pem)$/i, reason: 'login credentials' },
+  { match: /\.(sqlite3?|db)$/i, reason: 'a database' }
+];
+
+/**
+ * Why a discovered folder must not be offered for deletion, or null. Checks the
+ * folder and its direct children (a worktrees folder holds repos one level down).
+ */
+async function lockReason(dir: string): Promise<string | null> {
+  const hit = (names: string[]) => LOCK_MARKERS.find(m => names.some(n => m.match.test(n)))?.reason ?? null;
+  const top = await readdirSafe(dir);
+  const own = hit(top.map(e => e.name));
+  if (own) return own;
+  const children = top.filter(e => e.isDirectory()).slice(0, 200);
+  const nested = await mapLimit(children, IO_CONCURRENCY, async c =>
+    hit((await readdirSafe(path.join(dir, c.name))).map(e => e.name).filter(n => !/\.exe$/i.test(n))));
+  return nested.find(r => r !== null) ?? null;
+}
+
+/**
+ * Folders the tool discovery found that the fixed table above doesn't cover
+ * (e.g. ~/.antigravity-ide, ~/AppData/Roaming/Antigravity, ms-playwright).
+ * Without this the software view and the storage list disagreed on totals.
+ * Contents are unverified app data: YELLOW, so deleting needs the explicit
+ * acknowledgement in the pre-delete dialog.
+ */
+async function scanDiscoveredToolFolders(known: AICacheItem[]): Promise<AICacheItem[]> {
+  const tools = await discoverAITools();
+  const candidates = tools.flatMap(t => t.paths.map(p => ({ tool: t, path: p })))
+    .filter(c => !known.some(k => overlaps(k.path, c.path)));
+
+  const measured = await mapLimit(candidates, 4, async ({ tool, path: dir }) => {
+    const stat = await statSafe(dir);
+    if (!stat) return null;
+    const m = await measureDirectory(dir);
+    if (m.bytes === 0) return null;
+    const lockedBecause = await lockReason(dir);
+    const kind = lockedBecause === 'program files' ? 'installed app' : locationKind(dir);
+    const item: AICacheItem = {
+      id: stableId('discovered', dir),
+      name: `${tool.name} — ${path.basename(dir)} (${kind})`,
+      category: tool.name,
+      path: dir,
+      sizeBytes: m.bytes,
+      formattedSize: formatBytes(m.bytes),
+      tier: 'YELLOW',
+      // Program folders are removed by uninstalling; folders holding code,
+      // databases or logins are never offered — open them and decide by hand.
+      canDelete: kind !== 'installed app' && !lockedBecause,
+      impactDescription: kind === 'installed app'
+        ? `${tool.kind} program files. Uninstall it from Windows Settings > Apps instead of deleting the folder.`
+        : lockedBecause
+          ? `${tool.kind} data that contains ${lockedBecause}. Not deletable here — open the folder and remove only what you are sure of.`
+          : `${tool.kind} data found on disk. May hold settings, extensions, chats or history — open the folder and check before deleting.`,
+      lastModified: stat.mtime.toISOString().split('T')[0],
+      safeReason: lockedBecause || kind === 'installed app'
+        ? 'Locked: deleting this could lose code, logins, databases or break the app.'
+        : 'Not verified as rebuildable. Deleting goes to the Recycle Bin after a caution prompt.',
+      idleDays: idleDaysFor(m.newestMtimeMs)
+    };
+    return item;
+  });
+  // Nested discoveries (a tool folder inside another) would double-list bytes.
+  const found = measured.filter((i): i is AICacheItem => i !== null)
+    .sort((a, b) => a.path.length - b.path.length);
+  return found.filter((item, idx) => !found.slice(0, idx).some(prev => overlaps(prev.path, item.path)));
+}
+
+/** What the scan is doing right now, for the status bar. */
+export interface ScanProgress { running: boolean; phase: string; done: number; total: number; startedAt: number }
+let progress: ScanProgress = { running: false, phase: '', done: 0, total: 0, startedAt: 0 };
+export const getScanProgress = (): ScanProgress => progress;
+function setScanPhase(phase: string, total = 0): void { progress = { ...progress, phase, done: 0, total }; }
+function tickScan(): void { progress = { ...progress, done: progress.done + 1 }; }
+
 export async function scanAICaches(): Promise<AICacheItem[]> {
+  progress = { running: true, phase: 'Starting', done: 0, total: 0, startedAt: Date.now() };
+  try {
+    return await scanAllLocations();
+  } finally {
+    progress = { ...progress, running: false, phase: '' };
+  }
+}
+
+async function scanAllLocations(): Promise<AICacheItem[]> {
   const homeDir = os.homedir();
   const isWindows = process.platform === 'win32';
   const appData = process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
   const localAppData = process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
 
   const targets: AICacheItem[] = [];
+
+  // Pick the path for this OS; '' means "not on this platform" (stat fails, skipped).
+  const onOS = (p: { win?: string; mac?: string; linux?: string }): string =>
+    (process.platform === 'win32' ? p.win : process.platform === 'darwin' ? p.mac : p.linux) ?? '';
+  const macSupport = path.join(homeDir, 'Library', 'Application Support');
+  const macCaches = path.join(homeDir, 'Library', 'Caches');
+  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config');
+  const xdgCache = process.env.XDG_CACHE_HOME || path.join(homeDir, '.cache');
+  const xdgData = process.env.XDG_DATA_HOME || path.join(homeDir, '.local', 'share');
 
   const scanDefinitions = [
     {
@@ -357,7 +522,7 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       id: 'claude-appdata-roaming',
       name: 'Claude Desktop User Data & Chat Databases (C:)',
       category: 'Claude' as const,
-      path: isWindows ? path.join(appData, 'Claude') : path.join(homeDir, 'Library', 'Application Support', 'Claude'),
+      path: onOS({ win: path.join(appData, 'Claude'), mac: path.join(macSupport, 'Claude'), linux: path.join(xdgConfig, 'Claude') }),
       tier: 'YELLOW' as SafetyTier,
       canDelete: true,
       impactDescription: 'Contains Claude Desktop offline chat databases, session keys, and custom MCP settings.',
@@ -407,7 +572,7 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       id: 'cursor-appdata-roaming',
       name: 'Cursor Application Data & Workspace Storage (C:)',
       category: 'Cursor' as const,
-      path: isWindows ? path.join(appData, 'Cursor') : path.join(homeDir, 'Library', 'Application Support', 'Cursor'),
+      path: onOS({ win: path.join(appData, 'Cursor'), mac: path.join(macSupport, 'Cursor'), linux: path.join(xdgConfig, 'Cursor') }),
       tier: 'YELLOW' as SafetyTier,
       canDelete: true,
       impactDescription: 'Cursor workspace storage, extensions state, and session settings.',
@@ -449,7 +614,7 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       // Windows keeps this at %LOCALAPPDATA%\pip\Cache. The previous entry only
       // checked the Linux/macOS path (~/.cache/pip), so on Windows — the app's
       // only supported platform — it never matched.
-      path: isWindows ? path.join(localAppData, 'pip', 'Cache') : path.join(homeDir, '.cache', 'pip'),
+      path: onOS({ win: path.join(localAppData, 'pip', 'Cache'), mac: path.join(macCaches, 'pip'), linux: path.join(xdgCache, 'pip') }),
       tier: 'GREEN' as SafetyTier,
       canDelete: true,
       impactDescription: 'Downloaded Python wheels and build artifacts. pip re-downloads on demand.',
@@ -489,7 +654,7 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       id: 'yarn-cache',
       name: 'Yarn download cache',
       category: 'VS Code Extension' as const,
-      path: isWindows ? path.join(localAppData, 'Yarn', 'Cache') : path.join(homeDir, '.cache', 'yarn'),
+      path: onOS({ win: path.join(localAppData, 'Yarn', 'Cache'), mac: path.join(macCaches, 'Yarn'), linux: path.join(xdgCache, 'yarn') }),
       tier: 'GREEN' as SafetyTier,
       canDelete: true,
       impactDescription: 'Packages Yarn has downloaded.',
@@ -544,14 +709,194 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       canDelete: true,
       impactDescription: 'AnythingLLM local vector database, document embeddings, and chat history.',
       safeReason: 'AnythingLLM local vector database.'
-    }
+    },
+    // --- Temp & system caches ------------------------------------------------
+    //
+    // Not AI-specific, but they sit in the same profile and are pure waste. All
+    // GREEN: the OS and each app recreate them on demand.
+    {
+      id: 'user-temp',
+      name: 'Temporary files (your account)',
+      category: 'Dev Toolchain' as const,
+      path: onOS({ win: path.join(localAppData, 'Temp') }),
+      tier: 'YELLOW' as SafetyTier,
+      canDelete: false,
+      impactDescription: 'Installer leftovers, extracted archives and scratch files. Empty it with Settings → System → Storage → Temporary files (or Disk Cleanup), which keeps the folder and skips files in use.',
+      safeReason: 'Not deleted from here: removing the Temp folder itself breaks apps that expect it. Windows\' Storage settings empty it safely.'
+    },
+    {
+      id: 'windows-temp',
+      name: 'Temporary files (system)',
+      category: 'Dev Toolchain' as const,
+      path: onOS({ win: path.join(process.env.SystemRoot || 'C:\\Windows', 'Temp') }),
+      tier: 'YELLOW' as SafetyTier,
+      canDelete: false,
+      impactDescription: 'System-wide scratch files. Empty it with Disk Cleanup → Clean up system files → Temporary files.',
+      safeReason: 'Not deleted from here: it is a system folder that needs admin rights; Disk Cleanup empties it safely.'
+    },
+    {
+      id: 'windows-update-cache',
+      name: 'Windows Update download cache',
+      category: 'Dev Toolchain' as const,
+      path: onOS({ win: path.join(process.env.SystemRoot || 'C:\\Windows', 'SoftwareDistribution', 'Download') }),
+      // Not deletable from here: it needs admin rights and can hold a pending
+      // update. Windows' own Disk Cleanup handles it (see Windows & system tips).
+      tier: 'RED' as SafetyTier,
+      canDelete: false,
+      impactDescription: 'Update installers Windows downloaded. Clear it with Disk Cleanup → Clean up system files → Windows Update Cleanup.',
+      safeReason: 'Managed by Windows: remove it with Disk Cleanup, not by deleting the folder.'
+    },
+    {
+      id: 'crash-dumps',
+      name: 'Application crash dumps',
+      category: 'Dev Toolchain' as const,
+      path: onOS({ win: path.join(localAppData, 'CrashDumps') }),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Memory dumps written when an app crashed.',
+      safeReason: 'Safe to delete unless you are actively debugging a crash.'
+    },
+    {
+      id: 'thumbnail-cache',
+      name: 'Explorer thumbnail cache',
+      category: 'Dev Toolchain' as const,
+      path: onOS({ win: path.join(localAppData, 'Microsoft', 'Windows', 'Explorer') }),
+      tier: 'YELLOW' as SafetyTier,
+      canDelete: false,
+      impactDescription: 'Cached folder thumbnails and icons. Clear it with Disk Cleanup → Thumbnails; Explorer rebuilds them as you browse.',
+      safeReason: 'Not deleted from here: Explorer keeps these files open, and the folder also holds other Explorer data.'
+    },
+    {
+      id: 'dx-shader-cache',
+      name: 'GPU shader caches (DirectX / NVIDIA)',
+      category: 'Dev Toolchain' as const,
+      path: onOS({ win: path.join(localAppData, 'D3DSCache') }),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Compiled GPU shaders.',
+      safeReason: 'Safe to delete. Recompiled automatically, at a brief one-time cost.'
+    },
+    {
+      id: 'pnpm-store',
+      name: 'pnpm content store',
+      category: 'Dev Toolchain' as const,
+      path: onOS({ win: path.join(localAppData, 'pnpm', 'store'), mac: path.join(homeDir, 'Library', 'pnpm', 'store'), linux: path.join(xdgData, 'pnpm', 'store') }),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      reclaimCommandId: 'pnpm-store-prune',
+      impactDescription: 'Every package version pnpm has downloaded, shared across all your projects.',
+      safeReason: 'Safe to delete. pnpm refetches on the next install. Prefer "pnpm store prune", which removes only versions no project references.'
+    },
+    {
+      id: 'composer-cache',
+      name: 'Composer cache (PHP)',
+      category: 'Dev Toolchain' as const,
+      path: onOS({ win: path.join(localAppData, 'Composer'), mac: path.join(homeDir, '.composer', 'cache'), linux: path.join(xdgCache, 'composer') }),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      reclaimCommandId: 'composer-clear-cache',
+      impactDescription: 'Downloaded PHP packages and VCS clones.',
+      safeReason: 'Safe to delete. Composer refetches on the next install.'
+    },
+    // --- Dev toolchains -----------------------------------------------------
+    //
+    // Not AI tools, but every AI agent, MCP server and coding assistant builds
+    // on them, and their caches are routinely the largest reclaimable thing on
+    // a developer's disk. As with Node and Python, the RUNTIME is never offered
+    // for deletion — only its caches.
+    {
+      id: 'docker-wsl-disk',
+      name: 'Docker virtual disk (images, containers, volumes)',
+      category: 'Dev Toolchain' as const,
+      path: onOS({
+        win: path.join(localAppData, 'Docker', 'wsl', 'disk', 'docker_data.vhdx'),
+        mac: path.join(homeDir, 'Library', 'Containers', 'com.docker.docker', 'Data', 'vms', '0', 'data', 'Docker.raw'),
+        linux: path.join(homeDir, '.docker', 'desktop', 'vms', '0', 'data', 'Docker.raw')
+      }),
+      // RED: this single file IS your Docker data. Deleting it destroys every
+      // image, container and volume. It shrinks by running Docker's own prune,
+      // never by removing the file.
+      tier: 'RED' as SafetyTier,
+      canDelete: false,
+      reclaimCommandId: 'docker-prune',
+      impactDescription: 'Every Docker image, container and volume lives in this one file. It grows and never shrinks on its own.',
+      safeReason: 'DO NOT DELETE — this file is your Docker data. Free space with "docker system prune -a" (one click), then compact the disk (copy the admin command under Tool cleanup).'
+    },
+    {
+      id: 'chrome-on-device-model',
+      name: 'Chrome on-device AI model (Gemini Nano)',
+      category: 'Chrome AI' as const,
+      path: onOS({
+        win: path.join(localAppData, 'Google', 'Chrome', 'User Data', 'OptGuideOnDeviceModel'),
+        mac: path.join(macSupport, 'Google', 'Chrome', 'OptGuideOnDeviceModel'),
+        linux: path.join(xdgConfig, 'google-chrome', 'OptGuideOnDeviceModel')
+      }),
+      tier: 'YELLOW' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Model weights Chrome downloads for "Help me write" and scam detection. Chrome downloads it again unless you turn it off.',
+      safeReason: 'Best way: Chrome > Settings > System > turn off "On-device AI" — Chrome removes it itself. Deleting the folder alone only frees it until Chrome redownloads it.'
+    },
+    {
+      id: 'gradle-cache',
+      name: 'Gradle build cache',
+      category: 'Dev Toolchain' as const,
+      path: path.join(homeDir, '.gradle', 'caches'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Downloaded dependencies and build outputs. Gradle refetches and rebuilds on demand.',
+      safeReason: 'Safe to delete. A build cache only — the next build repopulates it.'
+    },
+    {
+      id: 'maven-repo',
+      name: 'Maven local repository',
+      category: 'Dev Toolchain' as const,
+      path: path.join(homeDir, '.m2', 'repository'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Downloaded Java dependencies. Maven refetches on the next build.',
+      safeReason: 'Safe to delete. Dependencies are redownloaded from the registry.'
+    },
+    {
+      id: 'go-mod-cache',
+      name: 'Go module cache',
+      category: 'Dev Toolchain' as const,
+      path: path.join(homeDir, 'go', 'pkg', 'mod'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      reclaimCommandId: 'go-cache-clean',
+      impactDescription: 'Downloaded Go modules. Redownloaded on the next build.',
+      safeReason: 'Safe to delete. Use "go clean -modcache" or delete directly.'
+    },
+    {
+      id: 'cargo-registry',
+      name: 'Rust cargo registry',
+      category: 'Dev Toolchain' as const,
+      path: path.join(homeDir, '.cargo', 'registry'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Downloaded crates. Refetched on the next build.',
+      safeReason: 'Safe to delete. Crates are redownloaded from crates.io.'
+    },
+    {
+      id: 'nuget-packages',
+      name: 'NuGet package cache',
+      category: 'Dev Toolchain' as const,
+      path: path.join(homeDir, '.nuget', 'packages'),
+      tier: 'GREEN' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Downloaded .NET packages. Restored on the next build.',
+      safeReason: 'Safe to delete. Packages are restored from the feed.'
+    },
   ];
 
+  setScanPhase('Known caches', scanDefinitions.length);
   const scanned = await mapLimit(scanDefinitions, 4, async (def) => {
     const stat = await statSafe(def.path);
+    tickScan();
     if (!stat) return null;
 
-    const size = await getDirectorySize(def.path);
+    const measured = await measureDirectory(def.path);
+    const size = measured.bytes;
     const item: AICacheItem = {
       id: def.id,
       name: def.name,
@@ -563,13 +908,24 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       canDelete: def.canDelete,
       impactDescription: def.impactDescription,
       lastModified: stat.mtime.toISOString().split('T')[0],
-      safeReason: def.safeReason
+      safeReason: def.safeReason,
+      reclaimCommandId: (def as { reclaimCommandId?: string }).reclaimCommandId,
+      idleDays: idleDaysFor(measured.newestMtimeMs)
     };
     return item;
   });
 
   for (const item of scanned) if (item) targets.push(item);
 
+  setScanPhase('AI tool folders');
+  targets.push(...(await scanDiscoveredToolFolders(targets)));
+
+  setScanPhase('App caches & models');
+  // Models first: the generic cache finder skips anything overlapping them.
+  targets.push(...(await scanModelStores()));
+  targets.push(...(await scanAppCaches(targets)));
+
+  setScanPhase('Projects on other drives');
   const secondaryItems = await scanSecondaryDrives();
   for (const item of secondaryItems) {
     if (!targets.some(t => t.path.toLowerCase() === item.path.toLowerCase())) {
@@ -577,5 +933,21 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
     }
   }
 
-  return targets;
+  return withDockerTrappedSpace(targets);
+}
+
+/**
+ * The Docker disk file never shrinks on its own, so its size says nothing about
+ * what's in it. Report the gap between the file and what Docker stores — the
+ * space a compact hands back to Windows. Only when Docker answers; no guessing.
+ */
+async function withDockerTrappedSpace(items: AICacheItem[]): Promise<AICacheItem[]> {
+  if (process.platform !== 'win32' || !items.some(i => i.id === 'docker-wsl-disk')) return items;
+  const disk = items.find(i => i.id === 'docker-wsl-disk');
+  const diskStat = disk ? await statSafe(disk.path) : null;
+  const stored = await dockerStoredBytes(diskStat?.mtimeMs ?? 0);
+  if (stored === null) return items;
+  return items.map(i => i.id === 'docker-wsl-disk'
+    ? { ...i, trappedBytes: Math.max(0, i.sizeBytes - stored) }
+    : i);
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { AICacheItem, AIProcessItem, SystemMetrics, SnapshotItem } from './types';
 import { MainDashboardView } from './components/MainDashboardView';
 import { TargetListTable } from './components/TargetListTable';
@@ -11,8 +11,14 @@ import { MemoryInspector } from './components/MemoryInspector';
 import { HistoryTab } from './components/HistoryTab';
 import { SettingsTab } from './components/SettingsTab';
 import { PreDeleteModal } from './components/PreDeleteModal';
+import { TitleBar } from './components/TitleBar';
+import { StatusBar } from './components/StatusBar';
+import { DiskExplorer } from './components/DiskExplorer';
+import { FirstRunTour } from './components/FirstRunTour';
+import { alertDialog, confirmDialog, onAppCommand } from './lib/native';
+import { useReclaimReminder } from './lib/useReclaimReminder';
 import { isRecentlyModified } from './lib/itemFilters';
-import { HardDrive, Cpu, Package, Eye, CheckCircle2, Sparkles, History, ShieldCheck, Settings, Laptop, Bot, LayoutDashboard, Code2, AlertTriangle } from 'lucide-react';
+import { HardDrive, Cpu, Package, Eye, CheckCircle2, Sparkles, History, Settings, Laptop, Bot, LayoutDashboard, Code2, FolderTree } from 'lucide-react';
 
 // Empty until the real scan loads. We intentionally do NOT seed the UI with
 // hardcoded sample items (previous versions shipped the developer's personal
@@ -38,11 +44,26 @@ const sortItemsByPriority = (raw: AICacheItem[]): AICacheItem[] => {
   });
 };
 
-type TabType = 'DASHBOARD' | 'SAFE_DELETE' | 'STORAGE' | 'SOFTWARE' | 'AUTOBOTS' | 'PROCESSES' | 'MIGRATION' | 'MEMORY' | 'HISTORY' | 'SETTINGS';
+type TabType = 'DASHBOARD' | 'SAFE_DELETE' | 'STORAGE' | 'EXPLORER' | 'SOFTWARE' | 'AUTOBOTS' | 'PROCESSES' | 'MIGRATION' | 'MEMORY' | 'HISTORY' | 'SETTINGS';
+
+// Order here is the Ctrl+1…9 shortcut order.
+const PAGE_TITLES: Record<TabType, string> = {
+  DASHBOARD: 'Storage overview',
+  SAFE_DELETE: 'Safe to delete',
+  STORAGE: 'All locations',
+  EXPLORER: 'Disk explorer',
+  SOFTWARE: 'Installed AI tools',
+  AUTOBOTS: 'Agents & crawlers',
+  PROCESSES: 'Running processes',
+  MEMORY: 'Stored transcripts',
+  HISTORY: 'Restore points',
+  MIGRATION: 'Export & migrate',
+  SETTINGS: 'Settings'
+};
 
 const getInitialTab = (): TabType => {
   const hash = window.location.hash.replace('#', '').toUpperCase() as TabType;
-  const validTabs: TabType[] = ['DASHBOARD', 'SAFE_DELETE', 'STORAGE', 'SOFTWARE', 'AUTOBOTS', 'PROCESSES', 'MIGRATION', 'MEMORY', 'HISTORY', 'SETTINGS'];
+  const validTabs = Object.keys(PAGE_TITLES) as TabType[];
   if (validTabs.includes(hash)) return hash;
 
   const saved = localStorage.getItem('ai_hygiene_active_tab') as TabType;
@@ -64,12 +85,15 @@ export const App: React.FC = () => {
   const [cleaning, setCleaning] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<TabType>(getInitialTab);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   const [updateInfo, setUpdateInfo] = useState<{
     updateAvailable: boolean;
     latestVersion?: string;
     currentVersion?: string;
     downloadUrl?: string;
     releaseNotes?: string;
+    assets?: { name: string; downloadUrl: string; sizeBytes: number; digest?: string }[];
   } | null>(null);
 
   const changeTab = (tab: TabType) => {
@@ -99,6 +123,8 @@ export const App: React.FC = () => {
     cacheThresholdGb: number;
     restorePointPolicy: 'PROMPT' | 'ALWAYS' | 'NEVER';
     customRestorePath: string;
+    reminderEnabled?: boolean;
+    reminderGb?: number;
   } | null>(null);
 
   const fetchConfig = async () => {
@@ -111,10 +137,13 @@ export const App: React.FC = () => {
   };
 
 
-  const fetchSystemData = async () => {
+  // refresh=true forces a new walk; otherwise the server may answer from its
+  // cached scan, which is what page loads and tab switches want.
+  const fetchSystemData = async (refresh = false) => {
     setScanError(null);
+    if (refresh) setLoading(true);
     try {
-      const response = await fetch('http://localhost:3333/api/scan');
+      const response = await fetch(`http://localhost:3333/api/scan${refresh ? '?refresh=1' : ''}`);
       if (!response.ok) throw new Error(`Scan API returned ${response.status}`);
       const data = await response.json();
 
@@ -144,11 +173,44 @@ export const App: React.FC = () => {
     fetchConfig();
   }, []);
 
+  // Tray "Rescan now".
+  useEffect(() => onAppCommand(cmd => { if (cmd === 'rescan') void fetchSystemData(true); }), []);
+
+  // Desktop keyboard shortcuts. Ctrl+R/F5 rescan instead of reloading the page.
+  useEffect(() => {
+    const order = Object.keys(PAGE_TITLES) as TabType[];
+    const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      const ctrl = e.ctrlKey || e.metaKey;
+      if ((ctrl && e.key.toLowerCase() === 'r') || e.key === 'F5') {
+        e.preventDefault();
+        void fetchSystemData(true);
+      } else if (ctrl && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      } else if (ctrl && /^[1-9]$/.test(e.key)) {
+        const tab = order[Number(e.key) - 1];
+        if (tab) { e.preventDefault(); changeTab(tab); }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const onQueryChange = (q: string) => {
+    setQuery(q);
+    // Searching is about locations; jump to the list that can show matches.
+    if (q && activeTab !== 'STORAGE') changeTab('STORAGE');
+  };
+
   // Threshold alert: fires when the measured AI footprint exceeds the GB limit
   // saved in Settings.
   const thresholdGb = appConfig?.cacheThresholdGb ?? 0;
   const totalGb = metrics ? metrics.totalAICacheBytes / (1024 * 1024 * 1024) : 0;
   const overThreshold = thresholdGb > 0 && totalGb > thresholdGb;
+
+  useReclaimReminder(appConfig, metrics);
 
   const requestClean = (selectedIds: string[]) => {
     const targetItems = items.filter(i => selectedIds.includes(i.id));
@@ -185,6 +247,9 @@ export const App: React.FC = () => {
         }
         // Refresh even on partial failure — some items really were removed.
         fetchSystemData();
+      } else if (response.status === 403 || response.status === 409) {
+        // A refusal explains why nothing was deleted; too long for a toast.
+        await alertDialog('Nothing was deleted', data.error, 'error');
       } else {
         showToast(`Error: ${data.error || 'Failed to clean items.'}`);
       }
@@ -240,6 +305,17 @@ export const App: React.FC = () => {
   };
 
   const handleKillProcess = async (pid: number) => {
+    const proc = processes.find(p => p.pid === pid);
+    const label = proc ? `${proc.tool} (${proc.name}, PID ${pid})` : `PID ${pid}`;
+    // Stopping a process loses its unsaved work, so every stop is confirmed.
+    const ok = await confirmDialog({
+      title: 'Stop process',
+      message: `Stop ${label}?`,
+      detail: 'Any unsaved work in it will be lost.',
+      confirmLabel: 'Stop process',
+      danger: true
+    });
+    if (!ok) return;
     try {
       const res = await fetch('http://127.0.0.1:3333/api/processes/kill', {
         method: 'POST',
@@ -275,6 +351,7 @@ export const App: React.FC = () => {
       items: [
         { tab: 'SAFE_DELETE', icon: <Sparkles size={15} />, text: 'Safe to delete' },
         { tab: 'STORAGE', icon: <HardDrive size={15} />, text: 'All locations' },
+        { tab: 'EXPLORER', icon: <FolderTree size={15} />, text: 'Disk explorer' },
         { tab: 'SOFTWARE', icon: <Laptop size={15} />, text: 'Installed AI tools' },
         { tab: 'AUTOBOTS', icon: <Bot size={15} />, text: 'Agents & crawlers' }
       ]
@@ -300,105 +377,48 @@ export const App: React.FC = () => {
   ];
 
   return (
-    <div className="ins-scope" style={{ display: 'flex', minHeight: '100vh', background: 'var(--ins-graphite-900)' }}>
-      {/* Toast */}
+    <div className="ins-scope ins-shell">
+      <TitleBar pageTitle={PAGE_TITLES[activeTab]} query={query} onQueryChange={onQueryChange} searchRef={searchRef} />
+
       {toastMessage && (
-        <div
-          className="ins-note ins-note--ok"
-          role="status"
-          style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 3000, background: 'var(--ins-graphite-800)', borderColor: 'rgba(63,185,138,0.4)' }}
-        >
+        <div className="ins-toast" role="status">
           <CheckCircle2 size={15} /> {toastMessage}
         </div>
       )}
 
-      {/* Sidebar */}
-      <aside
-        style={{
-          width: '224px',
-          minWidth: '224px',
-          borderRight: '1px solid var(--ins-graphite-700)',
-          background: 'var(--ins-graphite-850)',
-          padding: 'var(--ins-space-5) var(--ins-space-3)',
-          display: 'flex',
-          flexDirection: 'column',
-          height: '100vh',
-          position: 'sticky',
-          top: 0,
-          overflowY: 'auto'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '0 10px', marginBottom: 'var(--ins-space-6)' }}>
-          <ShieldCheck size={18} style={{ color: 'var(--ins-mist-300)' }} />
-          <div>
-            <div style={{ fontFamily: 'var(--ins-font-label)', fontSize: '0.9375rem', fontWeight: 600, letterSpacing: '-0.01em' }}>
-              AICacheCleaner
-            </div>
-            <div className="ins-data" style={{ fontSize: '0.6875rem', color: 'var(--ins-mist-500)' }}>v1.1.0</div>
-          </div>
-        </div>
+      <div className="ins-shell-body">
+        <aside className="ins-sidebar">
+          <nav style={{ flex: 1 }}>
+            {navGroups.map(group => (
+              <div key={group.label} className="ins-nav-group">
+                <span className="ins-label">{group.label}</span>
+                {group.items.map(item => (
+                  <button
+                    key={item.tab}
+                    className={activeTab === item.tab ? 'ins-nav-btn is-active' : 'ins-nav-btn'}
+                    onClick={() => changeTab(item.tab)}
+                    aria-current={activeTab === item.tab ? 'page' : undefined}
+                  >
+                    {item.icon}
+                    <span>{item.text}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
 
-        <nav style={{ flex: 1 }}>
-          {navGroups.map(group => (
-            <div key={group.label} className="ins-nav-group">
-              <span className="ins-label">{group.label}</span>
-              {group.items.map(item => (
-                <button
-                  key={item.tab}
-                  className={activeTab === item.tab ? 'ins-nav-btn is-active' : 'ins-nav-btn'}
-                  onClick={() => changeTab(item.tab)}
-                  aria-current={activeTab === item.tab ? 'page' : undefined}
-                >
-                  {item.icon}
-                  <span>{item.text}</span>
-                </button>
-              ))}
-            </div>
-          ))}
-        </nav>
+          <a href="https://dicecodes.com/" target="_blank" rel="noopener noreferrer" className="ins-meta ins-sidebar-foot">
+            <Code2 size={13} /> Built by Dice Codes
+          </a>
+        </aside>
 
-        <a
-          href="https://dicecodes.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="ins-meta"
-          style={{ padding: '10px', marginTop: 'var(--ins-space-5)', borderTop: '1px solid var(--ins-graphite-700)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--ins-mist-500)' }}
-        >
-          <Code2 size={13} /> Built by Dice Codes
-        </a>
-      </aside>
-
-      {/* Main workspace. min-width:0 is what stops grid children from forcing
-          the column wider than the viewport and clipping the rightmost card. */}
-      <main style={{ flex: 1, minWidth: 0, padding: 'var(--ins-space-6)', overflowY: 'auto', overflowX: 'hidden', maxHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 'var(--ins-space-4)' }}>
-        {scanError && (
-          <div className="ins-note ins-note--error">
-            <AlertTriangle size={15} />
-            <span>{scanError}</span>
-            <button className="ins-btn ins-btn--quiet" onClick={fetchSystemData} style={{ marginLeft: 'auto' }}>
-              Try again
-            </button>
-          </div>
-        )}
-
-        {overThreshold && (
-          <div className="ins-note ins-note--warn">
-            <AlertTriangle size={15} />
-            <span>
-              AI storage is <strong className="ins-data">{totalGb.toFixed(1)} GB</strong>, above your {thresholdGb} GB alert threshold.
-            </span>
-            <button className="ins-btn ins-btn--quiet" onClick={() => changeTab('SAFE_DELETE')} style={{ marginLeft: 'auto' }}>
-              Review safe caches
-            </button>
-          </div>
-        )}
-
+        <main className="ins-main">
         {activeTab === 'DASHBOARD' && (
           <MainDashboardView
             metrics={metrics}
             items={items}
             loading={loading}
-            onRefresh={fetchSystemData}
+            onRefresh={() => fetchSystemData(true)}
             onCleanSelected={requestClean}
             onExportVault={() => changeTab('MIGRATION')}
             onOpenFolder={handleOpenFolder}
@@ -423,7 +443,12 @@ export const App: React.FC = () => {
             loading={loading}
             onCleanSelected={requestClean}
             onOpenFolder={handleOpenFolder}
+            query={query}
           />
+        )}
+
+        {activeTab === 'EXPLORER' && (
+          <DiskExplorer onOpenFolder={handleOpenFolder} />
         )}
 
         {activeTab === 'SOFTWARE' && (
@@ -466,9 +491,21 @@ export const App: React.FC = () => {
         )}
 
         {activeTab === 'SETTINGS' && (
-          <SettingsTab updateInfo={updateInfo} onCheckUpdate={checkGitHubUpdate} />
+          <SettingsTab updateInfo={updateInfo} onCheckUpdate={checkGitHubUpdate} onSaved={fetchConfig} />
         )}
-      </main>
+        </main>
+      </div>
+
+      <StatusBar
+        engineError={scanError}
+        onRetry={() => fetchSystemData(true)}
+        threshold={overThreshold ? { totalGb, limitGb: thresholdGb } : null}
+        onThresholdClick={() => changeTab('SAFE_DELETE')}
+        update={updateInfo?.updateAvailable ? updateInfo : null}
+        onUpdateClick={() => changeTab('SETTINGS')}
+      />
+
+      <FirstRunTour onNavigate={tab => changeTab(tab as TabType)} />
 
       {/* PRE-DELETION SAFETY CHECKLIST MODAL */}
       <PreDeleteModal

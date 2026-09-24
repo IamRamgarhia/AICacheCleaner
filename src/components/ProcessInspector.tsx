@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import type { AIProcessItem } from '../types';
-import { Zap } from 'lucide-react';
 
 interface ProcessInspectorProps {
   processes: AIProcessItem[];
@@ -15,12 +14,11 @@ export const ProcessInspector: React.FC<ProcessInspectorProps> = ({ processes, o
   const [filter, setFilter] = useState<Filter>('ALL');
 
   const idle = processes.filter(p => p.isZombie);
-  const idleMemoryMb = idle.reduce((acc, p) => acc + p.memoryMb, 0);
 
   const matches = (p: AIProcessItem, f: Filter) => {
     if (f === 'IDLE') return p.isZombie;
-    if (f === 'AGENTS') return p.tool.toLowerCase().includes('subagent') || p.name.toLowerCase().includes('antigravity');
-    if (f === 'MCP') return p.tool.toLowerCase().includes('mcp') || p.name.toLowerCase().includes('node');
+    if (f === 'AGENTS') return /claude code|antigravity/i.test(p.tool);
+    if (f === 'MCP') return /mcp|npx launcher/i.test(p.tool);
     return true;
   };
 
@@ -40,15 +38,11 @@ export const ProcessInspector: React.FC<ProcessInspectorProps> = ({ processes, o
           <h1 className="ins-h1">Running processes</h1>
           <p className="ins-sub">
             Background AI sidecars, language servers and agent workers, with live CPU and memory.
-            &ldquo;Idle&rdquo; means holding more than 300&nbsp;MB while using almost no CPU.
+            &ldquo;Idle&rdquo; means orphaned (its parent app has closed), no window, over 150&nbsp;MB,
+            and no CPU work for 10 minutes across scans. Stop processes one at a time &mdash; each asks first.
           </p>
         </div>
 
-        {idle.length > 0 && (
-          <button className="ins-btn" onClick={() => idle.forEach(p => onKillProcess(p.pid))}>
-            <Zap size={14} /> Stop {idle.length} idle ({idleMemoryMb} MB)
-          </button>
-        )}
       </header>
 
       <div style={{ display: 'flex', gap: 'var(--ins-space-1)', flexWrap: 'wrap' }}>
@@ -95,7 +89,7 @@ export const ProcessInspector: React.FC<ProcessInspectorProps> = ({ processes, o
                 <tr key={proc.pid}>
                   <td>
                     <div style={{ color: 'var(--ins-mist-50)' }}>{proc.tool}</div>
-                    <span className="ins-data ins-meta">
+                    <span className="ins-data ins-meta" title={proc.command}>
                       {proc.name} · PID {proc.pid}
                     </span>
                   </td>

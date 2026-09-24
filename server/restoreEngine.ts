@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
+import fs from 'fs';
 import path from 'path';
 
 const execFileAsync = promisify(execFile);
@@ -102,7 +103,18 @@ export async function restoreFromRecycleBin(
     }));
   }
 
-  const script = buildRestoreScript(targets.map(t => path.normalize(t)), destinationDir);
+  // The Recycle Bin records full long names. A path given in 8.3 short form
+  // (C:\Users\RUNNER~1\...) would never match, so resolve the parent folder,
+  // which still exists, to its real long name first.
+  const longForm = (t: string): string => {
+    const n = path.normalize(t);
+    try { return path.join(fs.realpathSync.native(path.dirname(n)), path.basename(n)); } catch { return n; }
+  };
+  const pairs = targets.map(t => ({ asked: t, long: longForm(t) }));
+  const script = buildRestoreScript(pairs.map(p => p.long), destinationDir);
+  // Report results under the path the caller asked about.
+  const original = (p: string) =>
+    pairs.find(x => x.long.toLowerCase() === path.normalize(p).toLowerCase())?.asked ?? p;
 
   // -EncodedCommand (UTF-16LE base64) rather than -Command: passing a script
   // through -Command goes via CommandLineToArgvW, which ate the backslashes in
@@ -124,7 +136,7 @@ export async function restoreFromRecycleBin(
 
     const parsed = JSON.parse(trimmed);
     const rows: RestoreOutcome[] = Array.isArray(parsed) ? parsed : [parsed];
-    return rows.map(r => ({ path: r.path, restored: !!r.restored, reason: r.reason || undefined }));
+    return rows.map(r => ({ path: original(r.path), restored: !!r.restored, reason: r.reason || undefined }));
   } catch (e) {
     return targets.map(p => ({ path: p, restored: false, reason: (e as Error).message }));
   }

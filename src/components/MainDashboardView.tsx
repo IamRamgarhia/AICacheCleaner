@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { SystemMetrics, AICacheItem } from '../types';
 import { RefreshCw, FolderOpen, Rocket, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { FootprintStrip } from './FootprintStrip';
+import { openItemMenu } from '../lib/itemMenu';
 import '../lib/tokens.css';
 
 interface MainDashboardViewProps {
@@ -50,7 +51,8 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   loading,
   onRefresh,
   onCleanSelected,
-  onOpenFolder
+  onOpenFolder,
+  onNavigateTab
 }) => {
   const [launchingPath, setLaunchingPath] = useState<string | null>(null);
   const [launchMsg, setLaunchMsg] = useState<{ success: boolean; text: string } | null>(null);
@@ -78,27 +80,27 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   };
 
   const safeItems = items.filter(i => i.tier === 'GREEN' && i.canDelete);
+  // Shown only past 1 GB: small gaps are ext4 overhead, not worth a compact.
+  const dockerDisk = items.find(i => i.id === 'docker-wsl-disk' && (i.trappedBytes ?? 0) > 1024 ** 3);
 
   const visible = category ? items.filter(i => i.category === category) : items;
   const largest = [...visible].sort((a, b) => b.sizeBytes - a.sizeBytes).slice(0, 8);
 
   return (
-    <div className="ins-scope" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--ins-space-5)' }}>
+    <div className="ins-page">
       {/* Header: identity left, the one primary action right. */}
-      <header style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'var(--ins-space-4)', flexWrap: 'wrap' }}>
+      <header className="ins-page-head">
         <div>
-          <h1 style={{ fontFamily: 'var(--ins-font-label)', fontSize: '1.5rem', fontWeight: 600, letterSpacing: '-0.01em' }}>
-            Storage overview
-          </h1>
-          <p style={{ fontSize: '0.8125rem', color: 'var(--ins-mist-500)', marginTop: '2px' }}>
+          <h1 className="ins-h1">Storage overview</h1>
+          <p className="ins-sub">
             {metrics
               ? `Last scanned ${new Date(metrics.lastScanTimestamp).toLocaleTimeString()} · runs only when you ask`
               : 'Not scanned yet'}
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: 'var(--ins-space-2)' }}>
-          <button className="ins-btn" onClick={onRefresh} disabled={loading}>
+        <div className="ins-toolbar">
+          <button className="ins-btn" onClick={onRefresh} disabled={loading} title="Rescan (Ctrl+R)">
             <RefreshCw size={14} className={loading ? 'spin' : ''} />
             {loading ? 'Scanning' : 'Rescan'}
           </button>
@@ -152,6 +154,23 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         <Reading label="Memory in use" value={metrics ? `${(metrics.totalAIRAMMb / 1024).toFixed(2)} GB` : '—'} />
       </div>
 
+      {/* The Docker disk file never shrinks, so its biggest saving is invisible
+          in any size column. Surface it; nothing here deletes data. */}
+      {dockerDisk && (
+        <div className="ins-note ins-note--warn" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+          <span style={{ flex: '1 1 200px', minWidth: 0 }}>
+            Docker&apos;s disk file is {formatBytes(dockerDisk.sizeBytes)} but stores only{' '}
+            {formatBytes(dockerDisk.sizeBytes - (dockerDisk.trappedBytes ?? 0))}. About{' '}
+            <strong>{formatBytes(dockerDisk.trappedBytes ?? 0)}</strong> of empty space can be given back to Windows by
+            compacting it — your images, containers and volumes are kept.
+          </span>
+          <button className="ins-btn" onClick={() => onNavigateTab('SAFE_DELETE')}>
+            Show me how
+          </button>
+        </div>
+      )}
+
       {/* Dense table */}
       <div className="ins-panel" style={{ padding: 'var(--ins-space-5)' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 'var(--ins-space-4)' }}>
@@ -184,7 +203,11 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             )}
 
             {largest.map(item => (
-              <tr key={item.id}>
+              <tr
+                key={item.id}
+                onDoubleClick={() => onOpenFolder(item.path)}
+                onContextMenu={e => void openItemMenu(e, item, { onOpenFolder, onDelete: id => onCleanSelected([id]) })}
+              >
                 <td>
                   <div style={{ color: 'var(--ins-mist-50)', marginBottom: '1px' }}>{item.name}</div>
                   <button className="ins-path" onClick={() => onOpenFolder(item.path)} title={item.path}>

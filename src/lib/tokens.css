@@ -42,7 +42,9 @@
   --ins-locked-dim: rgba(217, 106, 106, 0.14);
 
   /* --- Type. One superfamily, three roles. --- */
-  --ins-font-ui:      'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  /* Body text uses the OS face (Segoe UI Variable on Windows 11, SF on macOS)
+     so the app reads as native software; Plex stays for labels and numbers. */
+  --ins-font-ui:      'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'IBM Plex Sans Variable', system-ui, sans-serif;
   --ins-font-label:   'IBM Plex Sans Condensed', 'IBM Plex Sans Variable', ui-sans-serif, sans-serif;
   --ins-font-data:    'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
@@ -471,6 +473,9 @@
   --ins-tool-openai:      #74a89a;
   --ins-tool-huggingface: #d4a95f;  /* amber-gold */
   --ins-tool-vscode:      #6f97c7;
+  --ins-tool-devtools:    #5b8a9e;  /* slate blue: Docker, package caches */
+  --ins-tool-projects:    #a89080;  /* taupe: your own code */
+  --ins-tool-browser:     #c2b280;  /* sand: Chrome AI, Playwright browsers (kept off the amber review hue) */
   --ins-tool-other:       #8b93a1;  /* neutral fallback */
 }
 

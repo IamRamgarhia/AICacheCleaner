@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, Save, CheckCircle2, AlertTriangle, ExternalLink, ShieldCheck, Download } from 'lucide-react';
+import { RefreshCw, Save, CheckCircle2, AlertTriangle, ExternalLink, ShieldCheck, Download, FolderOpen, Bell } from 'lucide-react';
+import { downloadUpdate, isElectron, pickFolder, type UpdateAsset } from '../lib/native';
+import { formatBytes } from '../lib/format';
 
 interface SettingsTabProps {
   updateInfo?: {
@@ -8,11 +10,21 @@ interface SettingsTabProps {
     currentVersion?: string;
     downloadUrl?: string;
     releaseNotes?: string;
+    assets?: UpdateAsset[];
   } | null;
   onCheckUpdate?: () => void;
+  /** Lets the app pick up changed preferences (threshold, reminder) at once. */
+  onSaved?: () => void;
 }
 
-export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpdate }) => {
+/** The asset matching how this copy runs: portable exe unless installed. */
+function pickAsset(assets: UpdateAsset[] = []): UpdateAsset | undefined {
+  // Windows builds only for now; other platforms get the Releases link.
+  if (!navigator.userAgent.includes('Windows')) return undefined;
+  return assets.find(a => /portable.*\.exe$/i.test(a.name)) ?? assets.find(a => /\.exe$/i.test(a.name));
+}
+
+export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpdate, onSaved }) => {
   const [cacheThresholdGb, setCacheThresholdGb] = useState<number>(20);
   const [restorePointPolicy, setRestorePointPolicy] = useState<'PROMPT' | 'ALWAYS' | 'NEVER'>('PROMPT');
   const [customRestorePath, setCustomRestorePath] = useState<string>('');
@@ -20,6 +32,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
   const [installing, setInstalling] = useState<boolean>(false);
   const [installMsg, setInstallMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [saved, setSaved] = useState<{ ok: boolean; text: string } | null>(null);
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderGb, setReminderGb] = useState(5);
+  const [download, setDownload] = useState<{ pct: number; text: string; ok?: boolean } | null>(null);
 
   useEffect(() => {
     fetch('http://127.0.0.1:3333/api/config')
@@ -29,6 +44,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
         if (data.cacheThresholdGb) setCacheThresholdGb(data.cacheThresholdGb);
         if (data.restorePointPolicy) setRestorePointPolicy(data.restorePointPolicy);
         if (data.customRestorePath) setCustomRestorePath(data.customRestorePath);
+        if (typeof data.reminderEnabled === 'boolean') setReminderEnabled(data.reminderEnabled);
+        if (typeof data.reminderGb === 'number') setReminderGb(data.reminderGb);
       })
       .catch(() => {});
   }, []);
@@ -38,13 +55,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
       const res = await fetch('http://127.0.0.1:3333/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cacheThresholdGb, restorePointPolicy, customRestorePath })
+        body: JSON.stringify({ cacheThresholdGb, restorePointPolicy, customRestorePath, reminderEnabled, reminderGb })
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `Server returned ${res.status}`);
       }
       setSaved({ ok: true, text: 'Preferences saved.' });
+      onSaved?.();
     } catch (e) {
       setSaved({ ok: false, text: `Could not save: ${(e as Error).message}` });
     }
@@ -55,6 +73,30 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
     setCheckingUpdate(true);
     if (onCheckUpdate) await onCheckUpdate();
     setTimeout(() => setCheckingUpdate(false), 1200);
+  };
+
+  const toggleReminder = async (on: boolean) => {
+    // The OS asks once; without permission a reminder could never show.
+    if (on && 'Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+    setReminderEnabled(on);
+  };
+
+  const chooseRestoreFolder = async () => {
+    const chosen = await pickFolder('Default restore destination', customRestorePath || undefined);
+    if (chosen) setCustomRestorePath(chosen);
+  };
+
+  const asset = pickAsset(updateInfo?.assets);
+  const handleDownload = async () => {
+    if (!asset) return;
+    setDownload({ pct: 0, text: 'Starting download…' });
+    const res = await downloadUpdate(asset, (received, total) =>
+      setDownload({ pct: total ? Math.round((received / total) * 100) : 0, text: `${formatBytes(received)} of ${formatBytes(total)}` }));
+    setDownload(res.ok
+      ? { pct: 100, ok: true, text: `Saved to ${res.path}${res.verified ? ' · checksum verified' : ''}. Close this app and start the new version.` }
+      : { pct: 0, ok: false, text: res.error || 'Download failed.' });
   };
 
   const handleInstallNative = async () => {
@@ -112,14 +154,21 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
 
           <div>
             <label className="ins-field-label" htmlFor="restorepath">Default restore destination</label>
-            <input
-              id="restorepath"
-              className="ins-input"
-              type="text"
-              value={customRestorePath}
-              placeholder="Leave blank to use the original location"
-              onChange={e => setCustomRestorePath(e.target.value)}
-            />
+            <div style={{ display: 'flex', gap: 'var(--ins-space-2)' }}>
+              <input
+                id="restorepath"
+                className="ins-input"
+                type="text"
+                value={customRestorePath}
+                placeholder="Leave blank to use the original location"
+                onChange={e => setCustomRestorePath(e.target.value)}
+              />
+              {isElectron() && (
+                <button className="ins-btn" onClick={chooseRestoreFolder} title="Choose folder">
+                  <FolderOpen size={13} /> Browse
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="ins-note ins-note--ok">
@@ -142,15 +191,30 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
               onChange={e => setCacheThresholdGb(Number(e.target.value))}
             />
             <span className="ins-meta" style={{ marginTop: '5px', display: 'block' }}>
-              A banner appears at the top of every screen once your footprint passes this.
+              A warning appears in the status bar once your footprint passes this.
             </span>
           </div>
 
-          <div className="ins-well">
-            <strong style={{ color: 'var(--ins-mist-50)', display: 'block', marginBottom: '3px' }}>
-              No scheduled cleaning
-            </strong>
-            Background cleaning would need an always-on service. AICacheCleaner only runs while you have it open.
+          <div>
+            <label className="ins-check">
+              <input type="checkbox" checked={reminderEnabled} onChange={e => void toggleReminder(e.target.checked)} />
+              <Bell size={13} /> Notify me when this much is safe to reclaim (GB)
+            </label>
+            <input
+              className="ins-input"
+              type="number"
+              min={0.5}
+              step={0.5}
+              value={reminderGb}
+              disabled={!reminderEnabled}
+              onChange={e => setReminderGb(Number(e.target.value))}
+              aria-label="Reminder threshold in GB"
+              style={{ marginTop: '6px' }}
+            />
+            <span className="ins-meta" style={{ marginTop: '5px', display: 'block' }}>
+              Off by default. While the app is open it re-checks every 6 hours and shows at most one notification a
+              day. It only tells you — it never deletes anything by itself.
+            </span>
           </div>
         </div>
 
@@ -161,7 +225,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
           <div className="ins-well" style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Installed</span>
             <span className="ins-data" style={{ color: 'var(--ins-mist-50)' }}>
-              {updateInfo?.currentVersion || 'v1.0.0'}
+              {updateInfo?.currentVersion || '—'}
             </span>
           </div>
           <div className="ins-well" style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -182,6 +246,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
               <RefreshCw size={14} className={checkingUpdate ? 'spin' : ''} />
               {checkingUpdate ? 'Checking' : 'Check for updates'}
             </button>
+            {updateInfo?.updateAvailable && asset && isElectron() && (
+              <button className="ins-btn ins-btn--primary" onClick={handleDownload} disabled={download !== null && download.ok === undefined}>
+                <Download size={14} /> Download {updateInfo.latestVersion} ({formatBytes(asset.sizeBytes)})
+              </button>
+            )}
             {updateInfo?.downloadUrl && (
               <a
                 className="ins-btn ins-btn--quiet"
@@ -194,6 +263,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
               </a>
             )}
           </div>
+          {download && (
+            <div className={`ins-note ${download.ok === false ? 'ins-note--error' : 'ins-note--ok'}`} style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+              <span>{download.text}</span>
+              {download.ok === undefined && (
+                <div className="ins-progress"><div className="ins-progress__fill" style={{ width: `${download.pct}%` }} /></div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Install */}

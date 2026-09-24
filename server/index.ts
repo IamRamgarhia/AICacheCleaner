@@ -1,12 +1,18 @@
 import express from 'express';
 import cors from 'cors';
-import { scanAICaches, formatBytes, getDirectorySize, calculateNonOverlappingSize } from './scanner';
+import { scanAICaches, formatBytes, getDirectorySize, calculateNonOverlappingSize, getScanProgress } from './scanner';
 import { pathExists, readdirSafe } from './fsAsync';
 import { scanAIProcesses, killProcess } from './processInspector';
 import { createSnapshot, listSnapshots, restoreSnapshot, deleteItemsSafely } from './snapshotManager';
 import { exportProjectVault, importProjectVault, exportSingleProject } from './migrationEngine';
 import { discoverProjects, findSourcesForProject, UNLINKABLE_TOOLS } from './projectLinker';
 import { beginExport, finishExport, getExportProgress } from './exportProgress';
+import { listAvailableReclaimCommands, runReclaimCommand } from './reclaimCommands';
+import { recycleBinLimits } from './recycleBinLimit';
+import { inspectFolder, invalidateInspections } from './folderInspect';
+import { listDrives } from './drives';
+import { getSystemTips } from './systemTips';
+import { sanitizeConfig, type AppConfig } from './config';
 import { detectInstalledAISoftware } from './softwareDetector';
 import { convertTranscripts, listAvailableTranscriptApps } from './transcriptConverter';
 import type { SystemMetrics, AICacheItem, AISoftwareAppItem } from '../src/types';
@@ -20,7 +26,7 @@ const PORT = 3333;
 
 // Single source of truth for identity strings that were previously duplicated
 // (and drifted) across endpoints.
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.2.0';
 const GITHUB_REPO = 'IamRamgarhia/AICacheCleaner';
 const RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases/latest`;
 
@@ -74,12 +80,6 @@ app.use(cors({
 // parser is a trivial memory-exhaustion vector.
 app.use(express.json({ limit: '1mb' }));
 
-// Persistent Local Configuration Engine
-interface AppConfig {
-  cacheThresholdGb: number;
-  restorePointPolicy: 'PROMPT' | 'ALWAYS' | 'NEVER';
-  customRestorePath: string;
-}
 
 // Two settings were removed rather than implemented, because implementing them
 // would have contradicted guarantees the product makes everywhere else:
@@ -94,8 +94,11 @@ interface AppConfig {
 const defaultConfig: AppConfig = {
   cacheThresholdGb: 20,
   restorePointPolicy: 'PROMPT',
-  customRestorePath: path.join(os.homedir(), 'Desktop', 'Restored_AI_Files')
+  customRestorePath: path.join(os.homedir(), 'Desktop', 'Restored_AI_Files'),
+  reminderEnabled: false,
+  reminderGb: 5
 };
+
 
 function getLocalConfig(): AppConfig {
   const configDir = path.join(os.homedir(), '.ai-cache-cleaner');
@@ -122,7 +125,37 @@ function getLocalConfig(): AppConfig {
 // ---------------------------------------------------------------------------
 const SCAN_CACHE_TTL_MS = 60_000;
 
+// Disk-backed so the scan survives restarts. Previously the cache lived only in
+// memory, so every launch re-walked tens of GB before showing anything. On boot
+// we serve the saved result immediately and refresh in the background.
+const SCAN_CACHE_FILE = path.join(os.homedir(), '.ai-cache-cleaner', 'scan-cache.json');
+const SCAN_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
 let cachedScan: { at: number; items: AICacheItem[] } | null = null;
+
+function loadScanFromDisk(): void {
+  try {
+    if (!fs.existsSync(SCAN_CACHE_FILE)) return;
+    const saved = JSON.parse(fs.readFileSync(SCAN_CACHE_FILE, 'utf-8'));
+    if (Array.isArray(saved?.items) && typeof saved.at === 'number') {
+      cachedScan = { at: saved.at, items: saved.items };
+      console.log(`[Scan] restored ${saved.items.length} items from cache`);
+    }
+  } catch {
+    // Corrupt or unreadable cache is not worth failing over — just rescan.
+  }
+}
+
+function saveScanToDisk(items: AICacheItem[]): void {
+  try {
+    fs.mkdirSync(path.dirname(SCAN_CACHE_FILE), { recursive: true });
+    const tmp = `${SCAN_CACHE_FILE}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ at: Date.now(), items }), 'utf-8');
+    fs.renameSync(tmp, SCAN_CACHE_FILE);
+  } catch (e) {
+    console.warn('[Scan] could not persist cache:', (e as Error).message);
+  }
+}
 let scanInFlight: Promise<AICacheItem[]> | null = null;
 
 // Same treatment for software detection. Discovery widened this from 13 fixed
@@ -155,12 +188,19 @@ async function getScannedItems(forceRefresh = false): Promise<AICacheItem[]> {
   if (!forceRefresh && cachedScan && Date.now() - cachedScan.at < SCAN_CACHE_TTL_MS) {
     return cachedScan.items;
   }
+  // Saved from a previous run: answer immediately and refresh in the
+  // background, so the UI is never blocked on a cold walk.
+  if (!forceRefresh && cachedScan && Date.now() - cachedScan.at < SCAN_CACHE_MAX_AGE_MS) {
+    if (!scanInFlight) void getScannedItems(true).catch(() => {});
+    return cachedScan.items;
+  }
   if (scanInFlight) return scanInFlight;
 
   scanInFlight = (async () => {
     try {
       const items = await scanAICaches();
       cachedScan = { at: Date.now(), items };
+      saveScanToDisk(items);
       return items;
     } finally {
       scanInFlight = null;
@@ -254,6 +294,20 @@ app.post('/api/clean', async (req, res) => {
       return res.status(400).json({ error: 'No valid items found for cleaning.' });
     }
 
+    // One id must mean one folder. If two scanned items ever shared an id,
+    // cleaning "one" would delete both — refuse instead of guessing.
+    const ambiguous = itemIds.filter((id: string) => rawItems.filter((i: AICacheItem) => i.id === id).length > 1);
+    if (ambiguous.length > 0) {
+      return res.status(409).json({ error: 'Nothing was deleted: an item could not be identified uniquely. Rescan and try again.' });
+    }
+
+    // The UI greys these out, but the server is the trust boundary: a protected
+    // item (e.g. Docker's virtual disk) must never be deletable by request.
+    const locked = targetItems.filter((i: AICacheItem) => !i.canDelete);
+    if (locked.length > 0) {
+      return res.status(403).json({ error: `Protected, not deletable: ${locked.map(i => i.name).join(', ')}` });
+    }
+
     // Surface ids the UI asked for that no longer exist in the scan, instead of
     // silently cleaning a subset and reporting the requested count as success.
     const resolvedIds = new Set(targetItems.map(i => i.id));
@@ -267,18 +321,29 @@ app.post('/api/clean', async (req, res) => {
       : config.restorePointPolicy === 'NEVER' ? false
       : createRestorePoint !== false; // 'PROMPT' — defer to the dialog
 
+    // deleteItemsSafely expects the PATH STRINGS to delete, not the item objects.
+    // It refuses the whole batch if any of it would not fit in the Recycle Bin.
+    const result = await deleteItemsSafely(targetItems.map(i => i.path));
+    if (result.refused.length > 0) {
+      const nameOf = (p: string) => targetItems.find(i => i.path === p)?.name ?? p;
+      return res.status(409).json({
+        error: result.refused.map(r => `${nameOf(r.path)} — ${r.reason}.`).join('\n') +
+          '\nNothing was deleted. Select fewer items, empty the Recycle Bin, raise its size (right-click it > Properties), or open the folder and remove what you choose by hand.'
+      });
+    }
+
+    // Recorded after the move so the restore point lists only what really went
+    // to the bin (it is a manifest, not a copy).
+    const movedSet = new Set(result.movedToTrash);
     let snapshotId: string | undefined;
-    if (wantsSnapshot) {
+    if (wantsSnapshot && movedSet.size > 0) {
       const snap = await createSnapshot(
-        targetItems,
+        targetItems.filter(i => movedSet.has(i.path)),
         undefined,
         customRestoreFolder || config.customRestorePath
       );
       snapshotId = snap.snapshotId;
     }
-
-    // deleteItemsSafely expects the PATH STRINGS to delete, not the item objects.
-    const result = await deleteItemsSafely(targetItems.map(i => i.path));
 
     // Map the helper's real return shape ({ movedToTrash, errors }) onto the
     // API response, computing reclaimed bytes from the items we actually moved.
@@ -289,6 +354,7 @@ app.post('/api/clean', async (req, res) => {
 
     // The on-disk state just changed, so the cached scan is stale.
     cachedScan = null;
+    for (const moved of result.movedToTrash) invalidateInspections(moved);
 
     res.json({
       success: result.success,
@@ -341,6 +407,80 @@ app.get('/api/metrics', async (_req, res) => {
   }
 });
 
+// What a folder holds, largest first. Read-only; used by the details pane and
+// the disk explorer.
+app.get('/api/inspect', async (req, res) => {
+  try {
+    const target = String(req.query.path || '');
+    if (!target || !path.isAbsolute(target)) {
+      return res.status(400).json({ error: 'An absolute folder path is required.' });
+    }
+    const stat = await fs.promises.stat(target).catch(() => null);
+    if (!stat) return res.status(404).json({ error: 'This location no longer exists — rescan to update the list.' });
+    if (!stat.isDirectory()) return res.status(422).json({ error: 'This is a single file, not a folder.' });
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 500);
+    res.json(await inspectFolder(target, limit, req.query.live === '1'));
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// Status bar: free space per drive, Recycle Bin room, scan progress.
+let binCache: { at: number; value: Record<string, { bytes: number; usedBytes: number; off: boolean }> | null } | null = null;
+let binInFlight: ReturnType<typeof recycleBinSummaryFresh> | null = null;
+async function recycleBinSummary() {
+  if (binCache && Date.now() - binCache.at < 60_000) return binCache.value;
+  binInFlight ??= recycleBinSummaryFresh().finally(() => { binInFlight = null; });
+  return binInFlight;
+}
+async function recycleBinSummaryFresh() {
+  const value = await recycleBinLimits()
+    .then(m => Object.fromEntries([...m].map(([d, l]) => [d, { bytes: l.bytes, usedBytes: l.usedBytes, off: l.nukeOnDelete }])))
+    .catch(() => null);
+  binCache = { at: Date.now(), value };
+  return value;
+}
+
+// The status bar polls this every 1.5 s during a scan. Drives and the bin are
+// slow to read, so they are shared by all callers and refreshed at most every
+// few seconds — a slow read can never pile up behind itself.
+let driveCache: { at: number; value: Promise<Awaited<ReturnType<typeof listDrives>>> } | null = null;
+function drivesSnapshot() {
+  if (!driveCache || Date.now() - driveCache.at > 5_000) driveCache = { at: Date.now(), value: listDrives() };
+  return driveCache.value;
+}
+
+app.get('/api/status', async (_req, res) => {
+  try {
+    res.json({
+      drives: await drivesSnapshot(),
+      // Never wait on the (slow) bin read here: answer with the last known
+      // figures and refresh in the background. The delete path reads it fresh.
+      recycleBin: (void recycleBinSummary(), binCache?.value ?? null),
+      scan: getScanProgress(),
+      lastScanAt: cachedScan?.at ?? null,
+      home: os.homedir(),
+      version: APP_VERSION
+    });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// Windows-level space with guided steps (hibernation file, update leftovers…).
+// Report-only: every action is a step or a copy-paste command for the user.
+let tipsCache: { at: number; tips: Awaited<ReturnType<typeof getSystemTips>> } | null = null;
+app.get('/api/system-tips', async (req, res) => {
+  try {
+    if (!tipsCache || req.query.refresh === '1' || Date.now() - tipsCache.at > 10 * 60_000) {
+      tipsCache = { at: Date.now(), tips: await getSystemTips() };
+    }
+    res.json({ tips: tipsCache.tips });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 // API 4: Get Saved Configuration
 app.get('/api/config', (_req, res) => {
   res.json(getLocalConfig());
@@ -349,7 +489,7 @@ app.get('/api/config', (_req, res) => {
 // API 5: Save Local Configuration
 app.post('/api/config', (req, res) => {
   try {
-    const updated = saveLocalConfig(req.body);
+    const updated = saveLocalConfig(sanitizeConfig(req.body));
     res.json({ success: true, config: updated });
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
@@ -601,6 +741,11 @@ app.post('/api/purge-software', async (req, res) => {
     }
 
     const purgeResult = await deleteItemsSafely(purgeable.map(i => i.path));
+    if (purgeResult.refused.length > 0) {
+      return res.status(409).json({
+        error: purgeResult.refused.map(r => `${r.path} — ${r.reason}.`).join('\n') + '\nNothing was deleted.'
+      });
+    }
     const purgedSet = new Set(purgeResult.movedToTrash);
     const reclaimedBytes = purgeable
       .filter(i => purgedSet.has(i.path))
@@ -653,7 +798,7 @@ app.get('/api/check-update', async (_req, res) => {
       body?: string;
       html_url?: string;
       published_at?: string;
-      assets?: Array<{ name: string; browser_download_url: string; size: number }>;
+      assets?: Array<{ name: string; browser_download_url: string; size: number; digest?: string }>;
     }
 
     const latestRelease = (await response.json()) as GithubRelease;
@@ -684,7 +829,9 @@ app.get('/api/check-update', async (_req, res) => {
       assets: latestRelease.assets?.map(a => ({
         name: a.name,
         downloadUrl: a.browser_download_url,
-        sizeBytes: a.size
+        sizeBytes: a.size,
+        // "sha256:<hex>" when GitHub has computed it; used to verify downloads.
+        digest: a.digest
       })) || []
     });
   } catch (e) {
@@ -879,6 +1026,31 @@ app.get('/api/export-progress', (_req, res) => {
   res.json(getExportProgress());
 });
 
+// API 15: Tool-native cleanup commands available on this machine.
+app.get('/api/reclaim-commands', async (_req, res) => {
+  try {
+    res.json({ commands: await listAvailableReclaimCommands() });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// API 16: Preview (read-only) or run one of them. The caller sends an ID only —
+// the command itself is defined server-side and never built from input.
+app.post('/api/reclaim-run', async (req, res) => {
+  try {
+    const { id, mode } = req.body;
+    if (typeof id !== 'string' || (mode !== 'preview' && mode !== 'run')) {
+      return res.status(400).json({ error: 'id and mode ("preview" | "run") are required' });
+    }
+    const result = await runReclaimCommand(id, mode);
+    if (mode === 'run') cachedScan = null;
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 // API 14b-pre: Which apps can actually take part in a transcript conversion on
 // THIS machine. The UI used to hardcode two mismatched lists that included an
 // unimplemented option and omitted supported ones.
@@ -939,6 +1111,13 @@ app.post('/api/install-native', async (_req, res) => {
 
 const server = app.listen(PORT, '127.0.0.1', () => {
   console.log(`AICacheCleaner Local Engine API running at http://127.0.0.1:${PORT}`);
+  // Serve whatever was saved last time, then warm a fresh scan in the
+  // background so the first screen the user opens is already populated.
+  loadScanFromDisk();
+  // Launching helper processes blocks this process briefly (antivirus checks
+  // each launch of an unsigned app), so the refresh starts after the window's
+  // first requests have been answered.
+  setTimeout(() => { void getScannedItems(!cachedScan).catch(() => {}); }, cachedScan ? 5_000 : 1_500);
 });
 
 server.on('error', (err: any) => {

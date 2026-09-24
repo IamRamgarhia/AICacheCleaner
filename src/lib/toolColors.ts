@@ -16,7 +16,10 @@ const TOOL_HUES: { match: RegExp; token: string }[] = [
   { match: /codex/i, token: '--ins-tool-codex' },
   { match: /openai|copilot/i, token: '--ins-tool-openai' },
   { match: /hugging\s?face|pytorch|torch/i, token: '--ins-tool-huggingface' },
-  { match: /vs ?code|mcp/i, token: '--ins-tool-vscode' }
+  { match: /vs ?code|mcp/i, token: '--ins-tool-vscode' },
+  { match: /chrome|playwright|puppeteer/i, token: '--ins-tool-browser' },
+  { match: /dev toolchain/i, token: '--ins-tool-devtools' },
+  { match: /your projects/i, token: '--ins-tool-projects' }
 ];
 
 export function toolColor(name: string | undefined): string {

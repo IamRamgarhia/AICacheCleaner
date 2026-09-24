@@ -17,6 +17,28 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(i >= 3 ? 2 : 1))} ${units[i]}`;
 }
 
+/** "Inside: node_modules 1.2 GB · .git 300 MB · …" — what a folder really holds. */
+const InsideSummary: React.FC<{ path: string }> = ({ path }) => {
+  const [text, setText] = useState<string>('Looking inside…');
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetch(`http://127.0.0.1:3333/api/inspect?limit=3&path=${encodeURIComponent(path)}`, { signal: ctrl.signal })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!d) return setText('Single file');
+        const parts = (d.children as { name: string; bytes: number }[]).map(c => `${c.name} ${formatBytes(c.bytes)}`);
+        setText(parts.length ? `Inside: ${parts.join(' · ')}${d.childCount > 3 ? ` · +${d.childCount - 3} more` : ''}` : 'Empty folder');
+      })
+      .catch(() => { /* aborted or offline: keep it quiet */ });
+    return () => ctrl.abort();
+  }, [path]);
+  return <span className="ins-meta" style={{ display: 'block', fontSize: '0.6875rem' }}>{text}</span>;
+};
+
+// Looking inside every folder of a 90-item selection would be slow and noisy;
+// the largest few are the ones worth a second look.
+const INSPECT_TOP = 6;
+
 export const PreDeleteModal: React.FC<PreDeleteModalProps> = ({
   isOpen,
   itemsToClean,
@@ -33,6 +55,9 @@ export const PreDeleteModal: React.FC<PreDeleteModalProps> = ({
       setCreateRestorePoint(restorePointPolicy !== 'NEVER');
     }
   }, [isOpen, restorePointPolicy]);
+
+  // A changed selection is a new decision: the "I understand" tick never carries over.
+  useEffect(() => { setAckUserData(false); }, [itemsToClean]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -88,16 +113,17 @@ export const PreDeleteModal: React.FC<PreDeleteModalProps> = ({
           <span className="ins-label" style={{ display: 'block', marginBottom: 'var(--ins-space-2)' }}>
             What will be moved
           </span>
-          <div className="ins-well" style={{ maxHeight: '150px', overflowY: 'auto', padding: 0 }}>
+          <div className="ins-well" style={{ maxHeight: '220px', overflowY: 'auto', padding: 0 }}>
             <table className="ins-table">
               <tbody>
-                {itemsToClean.map(item => (
+                {[...itemsToClean].sort((a, b) => b.sizeBytes - a.sizeBytes).map((item, idx) => (
                   <tr key={item.id}>
                     <td style={{ paddingLeft: 'var(--ins-space-3)' }}>
                       <div style={{ color: 'var(--ins-mist-50)', fontSize: '0.75rem' }}>{item.name}</div>
                       <span className="ins-data" style={{ fontSize: '0.6875rem', color: 'var(--ins-mist-500)' }}>
                         {item.path}
                       </span>
+                      {idx < INSPECT_TOP && <InsideSummary path={item.path} />}
                     </td>
                     <td className="ins-num ins-data" style={{ width: '80px', fontSize: '0.75rem' }}>
                       {item.formattedSize}
@@ -160,7 +186,8 @@ export const PreDeleteModal: React.FC<PreDeleteModalProps> = ({
         </div>
 
         <div style={{ display: 'flex', gap: 'var(--ins-space-2)', justifyContent: 'flex-end' }}>
-          <button className="ins-btn ins-btn--quiet" onClick={onCancel}>
+          {/* Focus starts on the safe choice, so keys typed next never reach the list behind. */}
+          <button className="ins-btn ins-btn--quiet" onClick={onCancel} autoFocus>
             Cancel
           </button>
           <button

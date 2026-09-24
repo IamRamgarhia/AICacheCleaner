@@ -1,0 +1,87 @@
+# AICacheCleaner — full reference
+
+> Free, open-source (MIT) Windows desktop app that measures and safely reclaims disk space used by AI tools, local AI models, Electron/Chromium app caches and developer package caches. Every delete goes to the Recycle Bin; unrecoverable deletes are refused. Runs 100% offline. Version 1.2.0. Download: https://github.com/IamRamgarhia/AICacheCleaner/releases/latest
+
+## Who it is for
+
+Developers and AI power users on Windows 10/11 whose C: drive fills up from AI coding tools (Claude Code, Cursor, Antigravity, Windsurf, Codex), local model runners (Ollama, LM Studio, Hugging Face), Docker Desktop, and package managers — and who want to free disk space without risking chats, settings, logins or code.
+
+## Common problems it solves (search phrasings)
+
+- "Claude Desktop taking too much space", "clear Claude cache Windows", "where does Claude store data on Windows"
+- "Cursor cache folder size", "clear Cursor cache", "Cursor using too much disk"
+- "Antigravity .gemini folder huge", "Google Antigravity storage", "delete Antigravity cache"
+- "Ollama models taking space", "where are Ollama models stored Windows", "delete Ollama model"
+- "Hugging Face cache location Windows", "clear huggingface hub cache"
+- "Docker Desktop using too much disk space Windows", "shrink docker_data.vhdx", "compact WSL vhdx", "docker system prune not freeing space"
+- "OptGuideOnDeviceModel 4GB", "Chrome Gemini Nano delete", "Chrome weights.bin large file"
+- "npm cache clean", "pip cache purge", "pnpm store prune", "clear yarn cache", "uv cache clean", "composer clear-cache"
+- "free up disk space for developers", "AI disk usage analyzer", "what is using my C drive"
+- "move Claude chat history to new PC", "backup Cursor chat history", "export AI conversations"
+- "hiberfil.sys large", "Windows Update cleanup", "$WinREAgent folder"
+
+## Features
+
+1. Storage overview: total tracked storage by tool, safe-to-reclaim total, and the largest locations. Nested folders are never double-counted.
+2. All locations: every AI cache, model, app cache and project folder with size, safety rating and "last used" (days since the newest file changed). Split view shows why an item has its rating and what is inside it.
+3. Safe to delete: caches that rebuild themselves, selected in one place, moved to the Recycle Bin after confirmation.
+4. Generic Chromium/Electron cache discovery: finds Cache, Code Cache, GPUCache, DawnCache, ShaderCache and CachedData folders beside Chromium profile files, for any app.
+5. Model stores: one entry per Hugging Face model or dataset, per Ollama model:tag (with the `ollama rm` command; files are not deleted directly because Ollama shares blobs between models), and per LM Studio model.
+6. Docker Desktop: reports the gap between docker_data.vhdx's size and what `docker system df` says is stored. Compact steps: quit Docker Desktop, `wsl --shutdown`, then diskpart `select vdisk file="...\docker_data.vhdx"`, `attach vdisk readonly`, `compact vdisk`, `detach vdisk` in an administrator shell. `docker system prune -a` is offered without `--volumes` so databases are never removed.
+7. Tool-native cleanup commands with a preview first: npm cache clean --force, pip cache purge, uv cache clean, yarn cache clean, pnpm store prune, composer clear-cache, go clean -cache -modcache, gradle --stop.
+8. Windows & system tips (report-only, guided steps): hibernation file (powercfg /h /type reduced or powercfg /h off), Windows Update leftovers (Disk Cleanup → Clean up system files), NVIDIA driver downloads, downloads older than 90 days, Recycle Bin contents.
+9. Disk explorer: browse any drive or folder, largest first, sizes filling in live. Read-only.
+10. Running processes: AI processes named from their command line (e.g. "MCP server: @playwright/mcp", "Claude Code (in Antigravity)"). "Idle" means orphaned, no window, 150 MB+ and no CPU work for 10 minutes. Stopping asks first and only works on listed processes.
+11. Export & migrate: export a project plus every Claude session (matched by working directory) and Cursor workspace conversation into one zip, streamed with no size limit.
+12. Restore points: a record of what was removed; restore moves items back out of the Recycle Bin.
+13. Desktop experience: native title bar and dialogs, status bar (free space per drive, Recycle Bin room, scan progress), right-click menus, tray icon, keyboard shortcuts (Ctrl+F, arrows, Space, Enter, Delete, Ctrl+R, Ctrl+1–9), opt-in reminder notifications, update download with SHA-256 verification.
+
+## Safety guarantees
+
+- Deletes move items to the Recycle Bin, never straight to permanent deletion.
+- Before deleting, sizes are re-measured and the whole selection is checked against each drive's Recycle Bin limit and current usage; if anything would be deleted permanently (too big, bin disabled, network/removable drive) or would push older recycled files out, nothing is deleted.
+- Protected items (for example Docker's virtual disk) can never be deleted, enforced by the local server.
+- Items holding code, git repositories, databases, credentials or program files are locked; user project folders are report-only.
+- Running a tool's own cleanup command asks first and states that it bypasses the Recycle Bin.
+- The local API only answers requests addressed to localhost and runs a fixed allowlist of commands selected by id.
+
+## Where AI tools store data on Windows (as measured by the app)
+
+- Claude Desktop: %APPDATA%\Claude (Cache, Code Cache, GPUCache, logs; chats and settings also live here)
+- Claude Code: %USERPROFILE%\.claude
+- Cursor: %APPDATA%\Cursor, %LOCALAPPDATA%\Cursor, %USERPROFILE%\.cursor
+- Google Antigravity / Gemini: %USERPROFILE%\.gemini, %USERPROFILE%\.antigravity-ide, %APPDATA%\Antigravity
+- Ollama: %USERPROFILE%\.ollama\models
+- Hugging Face: %USERPROFILE%\.cache\huggingface\hub (or HF_HOME / HF_HUB_CACHE)
+- Chrome on-device model: %LOCALAPPDATA%\Google\Chrome\User Data\OptGuideOnDeviceModel
+- Docker Desktop: %LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx
+- npm: %LOCALAPPDATA%\npm-cache · pip: %LOCALAPPDATA%\pip\Cache · pnpm: %LOCALAPPDATA%\pnpm\store · uv: %LOCALAPPDATA%\uv\cache · Composer: %LOCALAPPDATA%\Composer
+
+## FAQ
+
+Q: How do I clear the Claude Desktop cache on Windows?
+A: The caches are Cache, Code Cache and GPUCache under %APPDATA%\Claude. AICacheCleaner rates them "Rebuilds itself" and moves them to the Recycle Bin after confirmation; chats and settings are not touched.
+
+Q: Why doesn't docker system prune free space on Windows?
+A: It frees space inside docker_data.vhdx, but the file doesn't shrink. Compact it with diskpart while Docker and WSL are stopped. AICacheCleaner shows the trapped amount and the exact steps.
+
+Q: What is OptGuideOnDeviceModel?
+A: Chrome's on-device Gemini Nano model (~4 GB). Turn off "On-device AI" in Chrome Settings → System; deleting the folder alone only lasts until Chrome downloads it again.
+
+Q: Where are Ollama models stored on Windows, and how do I remove one?
+A: In %USERPROFILE%\.ollama\models (or OLLAMA_MODELS). Models share data files, so remove one with "ollama rm <model>"; AICacheCleaner lists each model with its size and that command.
+
+Q: How much disk space can I get back?
+A: On the development machine: 11.5 GB of rebuildable caches, 44.8 GB of empty space inside the Docker disk, 16.4 GB of guided Windows items, and 4 GB for Chrome's on-device model. Results depend on your tools.
+
+Q: Is deleting npm/pip/pnpm caches safe?
+A: Yes; they re-download on demand and installed projects are unaffected.
+
+Q: Can AICacheCleaner permanently delete files by mistake?
+A: No — deletes go to the Recycle Bin, and anything that would be deleted permanently is refused.
+
+Q: Does it work offline / collect data?
+A: It is fully offline and collects nothing. The only network call is an optional GitHub update check.
+
+Q: Is it free?
+A: Yes, free and open source under the MIT license.

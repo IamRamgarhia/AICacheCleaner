@@ -1,3 +1,4 @@
+import { bundle } from './bundle-helper.mjs';
 // Tests for the logic that decides WHAT GETS DELETED.
 //
 // This is the highest-consequence code in the product: a mistake here removes a
@@ -31,29 +32,24 @@ before(() => {
   fs.writeFileSync(
     entry,
     `export { calculateNonOverlappingSize, hasJunkExtension, formatBytes } from './scanner';\n` +
-      `export { buildRestoreScript } from './restoreEngine';\n`,
+      `export { buildRestoreScript } from './restoreEngine';\n` +
+      `export { describeProcess, isIdleProcess } from './processInspector';\n` +
+      `export { itemsThatSkipRecycleBin } from './recycleBinLimit';\n` +
+      `export { parseDockerSize } from './dockerUsage';\n`,
     'utf-8'
   );
 
   try {
-    execFileSync(
-      process.execPath,
-      [
-        path.join(repoRoot, 'node_modules', 'esbuild', 'bin', 'esbuild'),
-        entry,
-        '--bundle',
-        '--platform=node',
-        '--target=node18',
-        `--outfile=${outfile}`,
-        '--format=cjs'
-      ],
-      { cwd: repoRoot, stdio: 'pipe' }
-    );
+    bundle(entry, outfile);
     lib = require(outfile);
   } finally {
     fs.rmSync(entry, { force: true });
   }
 });
+
+// Build paths with this OS's separator: the helpers use path.sep, as the app
+// only ever sees native paths.
+const P = (...parts) => (process.platform === 'win32' ? parts.join('\\') : '/' + parts.slice(1).join('/'));
 
 const item = (p, sizeBytes) => ({
   id: p,
@@ -72,16 +68,16 @@ test('nested paths are counted once, not twice', () => {
   // A parent cache and one of its children both appear in a scan. Counting both
   // would inflate the reported footprint and the "reclaimable" figure.
   const total = lib.calculateNonOverlappingSize([
-    item('C:\\Users\\me\\AppData\\Roaming\\Claude', 1000),
-    item('C:\\Users\\me\\AppData\\Roaming\\Claude\\Cache', 400)
+    item(P('C:', 'Users', 'me', 'AppData', 'Roaming', 'Claude'), 1000),
+    item(P('C:', 'Users', 'me', 'AppData', 'Roaming', 'Claude', 'Cache'), 400)
   ]);
   assert.equal(total, 1000, 'child must not be added on top of its parent');
 });
 
 test('sibling paths are both counted', () => {
   const total = lib.calculateNonOverlappingSize([
-    item('C:\\a\\one', 100),
-    item('C:\\a\\two', 250)
+    item(P('C:', 'a', 'one'), 100),
+    item(P('C:', 'a', 'two'), 250)
   ]);
   assert.equal(total, 350);
 });
@@ -90,16 +86,16 @@ test('a path that merely shares a name prefix is not treated as nested', () => {
   // "Claude2" starts with "Claude" as a string but is a different directory.
   // A naive startsWith() check without the separator would swallow it.
   const total = lib.calculateNonOverlappingSize([
-    item('C:\\x\\Claude', 100),
-    item('C:\\x\\Claude2', 200)
+    item(P('C:', 'x', 'Claude'), 100),
+    item(P('C:', 'x', 'Claude2'), 200)
   ]);
   assert.equal(total, 300, 'Claude2 is a sibling of Claude, not a child');
 });
 
-test('nesting comparison ignores case, as Windows paths do', () => {
+test('nesting comparison ignores case, as Windows paths do', { skip: process.platform === 'linux' && 'Linux paths are case-sensitive' }, () => {
   const total = lib.calculateNonOverlappingSize([
-    item('C:\\Users\\Me\\Claude', 500),
-    item('c:\\users\\me\\claude\\Cache', 300)
+    item(P('C:', 'Users', 'Me', 'Claude'), 500),
+    item(P('c:', 'users', 'me', 'claude', 'Cache'), 300)
   ]);
   assert.equal(total, 500);
 });
@@ -136,4 +132,69 @@ test('restore script quotes Windows paths without losing separators', () => {
 test("restore script escapes a single quote so it can't break out of the literal", () => {
   const script = lib.buildRestoreScript(["D:\\it's here"]);
   assert.ok(script.includes("'D:\\it''s here'"), "a quote must be doubled, not left to terminate the string");
+});
+
+// --- Process idle rule: a wrong "idle" here offers to kill a window you use ---
+
+const proc = over => ({ memMb: 800, hasWindow: false, parentAlive: false, quietMs: 15 * 60_000, isSelf: false, ...over });
+
+test('idle only when orphaned, windowless, quiet for 10 min and holding memory', () => {
+  assert.equal(lib.isIdleProcess(proc({})), true);
+  assert.equal(lib.isIdleProcess(proc({ hasWindow: true })), false, 'open editor window');
+  assert.equal(lib.isIdleProcess(proc({ parentAlive: true })), false, 'child of a running app');
+  assert.equal(lib.isIdleProcess(proc({ quietMs: 60_000 })), false, 'one quiet sample is not idle');
+  assert.equal(lib.isIdleProcess(proc({ memMb: 40 })), false);
+  assert.equal(lib.isIdleProcess(proc({ isSelf: true })), false, 'never flag this app');
+});
+
+test('process labels come from the command line', () => {
+  const d = lib.describeProcess;
+  assert.equal(d('claude.exe', 'C:/Program Files/WindowsApps/Claude_2/app/Claude.exe', ''), 'Claude Desktop');
+  assert.equal(d('claude.exe', '', '"Claude.exe" --type=renderer'), 'Claude Desktop (helper)');
+  assert.equal(d('claude.exe', '', 'c:/Users/x/.antigravity-ide/extensions/anthropic.claude-code/claude.exe --output-format stream-json'), 'Claude Code (in Antigravity)');
+  assert.equal(d('node.exe', '', 'node npx-cli.js -y @upstash/context7-mcp'), 'npx launcher: @upstash/context7-mcp');
+  assert.equal(d('node.exe', '', 'node D:/p/memorybridge/dist/server.js'), 'MCP server: memorybridge');
+  assert.equal(d('python.exe', '', 'python.exe -m code_review_graph serve'), 'Python: code_review_graph serve');
+  assert.equal(d('node.exe', '', 'node vite.js build'), 'Vite build');
+  assert.equal(d('node.exe', '', 'node app.js'), 'Node.js: app.js');
+  assert.equal(d('node.exe', '', 'node C:/npm-cache/_npx/98/node_modules/.bin//../@playwright/mcp/cli.js'), 'MCP server: @playwright/mcp');
+  assert.equal(d('Antigravity IDE.exe', '', '"Antigravity IDE.exe" c:/p/resources/app/extensions/json-language-features/server.js'), 'Antigravity IDE extension: json-language-features');
+});
+
+// --- Recycle Bin limit: a folder too big for the bin is deleted permanently ---
+
+const GB = 1024 ** 3;
+const bin = (bytes, usedBytes = 0, nukeOnDelete = false) => ({ bytes, usedBytes, nukeOnDelete });
+const refusedPaths = (items, limits) => lib.itemsThatSkipRecycleBin(items, limits).map(r => r.item.path);
+
+test('a selection that fits the Recycle Bin is allowed', () => {
+  const limits = new Map([['C:', bin(10 * GB)]]);
+  assert.deepEqual(refusedPaths([{ path: 'C:/a', sizeBytes: 2 * GB }, { path: 'C:/b', sizeBytes: 3 * GB }], limits), []);
+});
+
+test('the whole selection per drive is checked, not each item alone', () => {
+  // Two 5 GB items each fit a 10 GB bin, but together they would purge it.
+  const limits = new Map([['C:', bin(10 * GB)]]);
+  assert.deepEqual(refusedPaths([{ path: 'C:/a', sizeBytes: 5 * GB }, { path: 'C:/b', sizeBytes: 5 * GB }], limits), ['C:/a', 'C:/b']);
+});
+
+test('what is already in the bin counts against its room', () => {
+  const limits = new Map([['C:', bin(10 * GB, 8 * GB)]]);
+  assert.deepEqual(refusedPaths([{ path: 'C:/a', sizeBytes: 2 * GB }], limits), ['C:/a']);
+});
+
+test('drives with no bin, bin turned off, UNC and \\?\ paths are refused', () => {
+  const limits = new Map([['C:', bin(10 * GB)], ['E:', bin(50 * GB, 0, true)]]);
+  const paths = ['E:/stuff', 'Z:/stuff', String.raw`\\server\share\x`, String.raw`\\?\C:\x`];
+  assert.deepEqual(refusedPaths(paths.map(path => ({ path, sizeBytes: 1 })), limits), paths);
+});
+
+// --- Docker reports decimal units; a wrong parse misstates the trapped space ---
+
+test('docker sizes parse with decimal units', () => {
+  assert.equal(lib.parseDockerSize('5.581GB'), 5_581_000_000);
+  assert.equal(lib.parseDockerSize('115.8MB'), 115_800_000);
+  assert.equal(lib.parseDockerSize('81.38kB'), 81_380);
+  assert.equal(lib.parseDockerSize('0B'), 0);
+  assert.equal(lib.parseDockerSize('n/a'), 0);
 });

@@ -31,3 +31,7 @@ Thumbs.db
 
 # Local preview/launch config
 .claude/
+
+# Test output
+test-results/
+playwright-report/
