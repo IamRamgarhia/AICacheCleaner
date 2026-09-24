@@ -1,6 +1,11 @@
-const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, shell, utilityProcess, screen } = require('electron');
+const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, nativeTheme, shell, utilityProcess, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+
+// Windows 11 22H2+ can paint the real Mica material behind the window, like
+// Settings and Explorer. Earlier Windows keeps the app's own background.
+const USE_MICA = process.platform === 'win32' && Number(os.release().split('.')[2]) >= 22621;
 
 // Enforce Windows Single-Instance Lock (Standard Windows software rule: focuses existing instance, prevents duplicate port errors)
 const gotTheLock = app.requestSingleInstanceLock();
@@ -124,17 +129,19 @@ if (!gotTheLock) {
       minHeight: 640,
       title: 'AICacheCleaner',
       icon: appIcon(),
-      backgroundColor: '#0e1116',
+      backgroundColor: USE_MICA ? '#00000000' : '#0e1116',
+      ...(USE_MICA ? { backgroundMaterial: 'mica' } : {}),
       // Native window controls drawn over our own title bar, so the window
       // reads as one piece of software instead of a web page inside a frame.
       titleBarStyle: 'hidden',
-      titleBarOverlay: { color: TITLEBAR_BG, symbolColor: TITLEBAR_FG, height: TITLEBAR_HEIGHT },
+      titleBarOverlay: { color: USE_MICA ? '#00000000' : TITLEBAR_BG, symbolColor: TITLEBAR_FG, height: TITLEBAR_HEIGHT },
       show: false,
       webPreferences: {
         preload: path.join(__dirname, 'preload.cjs'),
         nodeIntegration: false,
         contextIsolation: true,
-        spellcheck: false
+        spellcheck: false,
+        additionalArguments: USE_MICA ? ['--aicc-material=mica'] : []
       }
     });
 
@@ -218,6 +225,24 @@ if (!gotTheLock) {
     return res.canceled ? null : res.filePaths[0] ?? null;
   });
 
+  // An installed app's own icon, for the software list. Only existing .exe
+  // files; results are cached because the list asks for the same ones often.
+  const iconCache = new Map();
+  ipcMain.handle('app:fileIcon', async (_e, p) => {
+    const file = typeof p === 'string' ? p : '';
+    // Local files only: a \\host\share path would block on the network and send
+    // the user's Windows credentials to that host.
+    if (!/\.exe$/i.test(file) || !path.isAbsolute(file) || /^[\\/]{2}/.test(file) || path.normalize(file) !== file) return null;
+    if (iconCache.has(file)) return iconCache.get(file);
+    let url = null;
+    try {
+      await fs.promises.access(file);
+      url = (await app.getFileIcon(file, { size: 'normal' })).toDataURL();
+    } catch { /* missing or no icon */ }
+    iconCache.set(file, url);
+    return url;
+  });
+
   // Resolves with the chosen item id, or null when the menu is dismissed.
   ipcMain.handle('menu:context', (_e, items) => new Promise(resolve => {
     let chosen = null;
@@ -284,6 +309,8 @@ if (!gotTheLock) {
   });
 
   app.on('ready', () => {
+    // The UI is dark-only; this also makes Mica use its dark tint.
+    nativeTheme.themeSource = 'dark';
     // utilityProcess.fork is only valid once the app is ready.
     startBackend();
     createWindow();

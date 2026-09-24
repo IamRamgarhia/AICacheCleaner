@@ -6,6 +6,8 @@
    sent a request to Google each time the app opened. */
 @import './lib/tokens.css';
 @import './lib/shell.css';
+@import './lib/glass.css';
+@import './lib/native.css';
 
 :root {
   --bg-dark: #0b0f19;

@@ -1,6 +1,32 @@
 import type { Page, Request } from '@playwright/test';
+import { CLUTTER, DOCKER, DUPLICATES, GROWTH, MCP, WSL } from './mockFeatures';
 
 const GB = 1024 ** 3;
+const MB = 1024 ** 2;
+
+type Sw = { id: string; name: string; category: string; group?: string; status: string; size: number; ram?: number; procs?: number; version?: string; canUninstall?: boolean; cmd?: string };
+const sw = (r: Sw) => ({
+  id: r.id, name: r.name, category: r.category, group: r.group, status: r.status, version: r.version,
+  detectionPaths: [`C:\\Users\\me\\AppData\\Local\\${r.name.replace(/\W+/g, '')}`],
+  totalDiskSizeBytes: r.size, formattedDiskSize: r.size >= GB ? `${(r.size / GB).toFixed(1)} GB` : `${Math.round(r.size / MB)} MB`,
+  ramMb: r.ram, processCount: r.procs, pid: r.ram ? 4200 : undefined, cpuPercent: r.ram ? 1 : undefined,
+  description: `${r.name} — sample entry.`, canUninstall: r.canUninstall ?? r.group === undefined, manualCommand: r.cmd
+});
+
+// A realistic mix of every section on the Installed AI tools page.
+export const SOFTWARE = [
+  sw({ id: 'sw-claude', name: 'Claude', category: 'Assistant & agent CLI · Anthropic', status: 'ACTIVE IN RAM', size: 14.7 * GB, ram: 2900, procs: 20 }),
+  sw({ id: 'sw-antigravity', name: 'Antigravity', category: 'Agentic IDE · Google', status: 'ACTIVE IN RAM', size: 24.9 * GB, ram: 2300, procs: 25, version: 'v2.11.0' }),
+  sw({ id: 'app-zcode', name: 'ZCode', category: 'AI coding app · Z.ai', status: 'INSTALLED ON DISK', size: 1.2 * GB, version: 'v3.10.1' }),
+  sw({ id: 'sw-cursor', name: 'Cursor', category: 'AI code editor · Anysphere', status: 'LAYING ON DISK (RESIDUAL)', size: 19 * MB }),
+  sw({ id: 'feat-chrome', name: 'Google Chrome', category: 'Gemini in Chrome · Google', group: 'ai-feature', status: 'ACTIVE IN RAM', size: 495 * MB, ram: 2770, procs: 30, version: 'v153.0' }),
+  sw({ id: 'feat-photoshop', name: 'Adobe Photoshop', category: 'Generative Fill · Adobe', group: 'ai-feature', status: 'INSTALLED ON DISK', size: 5.4 * GB, version: 'v27.10' }),
+  sw({ id: 'tc-docker', name: 'Docker Desktop', category: 'Containers · Docker', group: 'toolchain', status: 'ACTIVE IN RAM', size: 50 * GB, ram: 2048, procs: 3, version: 'v4.83.0' }),
+  sw({ id: 'tc-python', name: 'Python', category: 'Python runtime', group: 'toolchain', status: 'INSTALLED ON DISK', size: 1.4 * GB, version: 'v3.14.7' }),
+  sw({ id: 'tc-node', name: 'Node.js', category: 'JavaScript runtime', group: 'toolchain', status: 'ACTIVE IN RAM', size: 564 * MB, ram: 656, procs: 31, version: 'v24.19.0' }),
+  sw({ id: 'npm-playwright-mcp', name: 'Playwright MCP', category: 'npm global · @playwright/mcp', group: 'package', status: 'INSTALLED ON DISK', size: 17 * MB, version: 'v0.0.76', cmd: 'npm uninstall -g @playwright/mcp' }),
+  sw({ id: 'py-onnxruntime', name: 'onnxruntime', category: 'Python library', group: 'package', status: 'INSTALLED ON DISK', size: 41 * MB, version: 'v1.26.0', cmd: 'pip uninstall onnxruntime' })
+];
 
 const item = (over: Record<string, unknown>) => ({
   category: 'Claude',
@@ -89,6 +115,13 @@ export async function mockApi(page: Page, opts: MockOptions = {}): Promise<MockL
         return json({ success: true });
       case '/api/system-tips': return json({ tips: [] });
       case '/api/reclaim-commands': return json({ commands: [] });
+      case '/api/software': return json({ software: SOFTWARE });
+      case '/api/docker/breakdown': return json(DOCKER);
+      case '/api/wsl/distros': return json(WSL);
+      case '/api/duplicate-models': return json(DUPLICATES);
+      case '/api/project-clutter': return json(CLUTTER);
+      case '/api/mcp-servers': return json(MCP);
+      case '/api/growth': return json(GROWTH);
       default: return json({});
     }
   };

@@ -8,6 +8,8 @@ export interface AppConfig {
   /** Opt-in: notify (never delete) when this much is safe to reclaim. */
   reminderEnabled: boolean;
   reminderGb: number;
+  /** Opt-in: also a system notification (once a day) past cacheThresholdGb. */
+  thresholdNotify: boolean;
 }
 
 /** Keep only known keys with sane values; the body is untrusted input. */
@@ -25,6 +27,7 @@ export function sanitizeConfig(input: unknown): Partial<AppConfig> {
     out.customRestorePath = o.customRestorePath;
   }
   if (typeof o.reminderEnabled === 'boolean') out.reminderEnabled = o.reminderEnabled;
+  if (typeof o.thresholdNotify === 'boolean') out.thresholdNotify = o.thresholdNotify;
   const reminder = num(o.reminderGb, 0.5, 10_000);
   if (reminder !== undefined) out.reminderGb = reminder;
   return out;

@@ -5,6 +5,7 @@ import { JUNK_EXTENSIONS, RECENT_WINDOW_DAYS, isRecentlyModified } from '../lib/
 import { toolColor } from '../lib/toolColors';
 import { openItemMenu } from '../lib/itemMenu';
 import { DetailsPane } from './DetailsPane';
+import { LoadingState } from './LoadingState';
 
 interface TargetListTableProps {
   items: AICacheItem[];
@@ -214,10 +215,7 @@ export const TargetListTable: React.FC<TargetListTableProps> = ({ items, onClean
       <div className="ins-split">
         <div className="ins-panel ins-split-list" tabIndex={0} onKeyDown={onKeyDown} aria-label="Locations">
           {loading && items.length === 0 ? (
-            <div className="ins-empty">
-              <strong>Scanning your drives…</strong>
-              Measuring every AI cache, model store and project folder.
-            </div>
+            <LoadingState live title="Scanning your drives" detail="Measuring every AI cache, model, app cache and project folder." />
           ) : visible.length === 0 ? (
             <div className="ins-empty">
               <strong>Nothing matches</strong>

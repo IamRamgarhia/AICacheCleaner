@@ -1,6 +1,6 @@
 # AICacheCleaner — full reference
 
-> Free, open-source (MIT) Windows desktop app that measures and safely reclaims disk space used by AI tools, local AI models, Electron/Chromium app caches and developer package caches. Every delete goes to the Recycle Bin; unrecoverable deletes are refused. Runs 100% offline. Version 1.2.0. Download: https://github.com/IamRamgarhia/AICacheCleaner/releases/latest
+> Free, open-source (MIT) Windows desktop app that measures and safely reclaims disk space used by AI tools, local AI models, Electron/Chromium app caches and developer package caches. Every delete goes to the Recycle Bin; unrecoverable deletes are refused. Runs 100% offline. Version 1.3.0. Download: https://github.com/IamRamgarhia/AICacheCleaner/releases/latest
 
 ## Who it is for
 

@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2026-09-24
+
+### 🧭 Everything AI on your PC, a native look, and four new tools
+
+#### 🔍 Installed AI tools — now the whole picture
+- **Five sections in one list:** AI apps and agents · AI models · apps with AI built in · software AI tools rely on · packages AI tools installed.
+- **Read from Windows' installed-programs list**, PATH and package folders instead of a fixed table — ZCode, Upscayl, Wispr Flow, OpenCode, OpenWork, Eigent, Kilo, Superhuman, agent skills, MCP servers and more are recognised.
+- **AI models of every kind:** LLMs in Ollama, LM Studio and Hugging Face (with the tool's own remove command), and image, video, speech and vision models from ComfyUI, A1111/Forge, Fooocus, InvokeAI, Stability Matrix, Pinokio, Whisper, rembg, GPT4All and Jan.
+- **What AI relies on:** Docker Desktop (including its virtual disk), WSL, Python, Node.js, Git, GitHub CLI, uv, Bun, pnpm, Java, Go, Rust, .NET, Visual C++ runtimes, VS Code, PostgreSQL, the NVIDIA driver and CUDA — version, size and whether it's running. Shown for information only; they can't be removed from the app.
+- **Packages AI tools installed:** global npm packages, AI Python libraries (PyTorch, transformers, onnxruntime, gradio, mcp…) and uv/pipx tools, each with the command that removes it.
+- **Real icons** taken from each app's .exe, and official brand marks for CLIs, stores and packages.
+- **Fixed:** "Agent workspace — by Unknown" is now correctly Agent skills / Docker cagent; OpenHands and Crawl4AI no longer show as running because any Python process is; apps found only by their leftover settings folder are labelled "Left behind" only when we know what their install looks like.
+
+#### 🆕 New pages
+- **Docker & WSL** — images, containers, volumes and build cache with sizes. Build cache and dangling images can be cleaned (they rebuild themselves); stopped containers, unused images and volumes get copy-paste commands with clear warnings. Every WSL distro's disk with compaction steps.
+- **Duplicate models** — the same weights stored twice across stores. A plain copy can go to the Recycle Bin only while another real copy remains, and only after a full byte-for-byte comparison; files inside Ollama/Hugging Face stores are removed with the tool's own command.
+- **Old project clutter** — `node_modules`, virtual environments, Rust `target`, framework caches and build output in projects untouched for 14+ days. Only folders the project can rebuild (a venv needs its requirements file, `dist`/`build` must be git-ignored). Recycle Bin only.
+- **MCP servers** — every server configured across Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Gemini/Antigravity, Codex and Cline/Kilo, merged, with running state and memory. API keys, tokens and passwords are never shown.
+- **Growth** on the overview — how your AI storage changes over 7 and 30 days, fastest-growing tools first; optional once-a-day notification past your limit (Settings).
+
+#### 🖥️ Looks and works like desktop software
+- **List + details** instead of card grids: sortable columns, grouped sections, arrow-key navigation, filter box, right-click menu.
+- **Windows 11 Mica** window material, the system font everywhere, sentence-case labels, compact controls, default cursor.
+- **Loading shown in the middle of the page** on every screen, with what's happening and for how long.
+- **Glass surfaces** throughout; a duplicated stylesheet that was silently undoing them is fixed.
+
+#### 🛡️ Safety
+- Items shown for information can't be cleaned — the engine refuses them, not just the interface.
+- Install folders from the registry are used only when they are the app's own folder (never System32, Program Files itself or your home folder).
+- Moves to the Recycle Bin run one at a time, so two clicks can't remove both copies of a model.
+- Network (`\\server\share`) icon paths are ignored, so drawing an icon can't send your Windows credentials anywhere.
+
+#### 🧪 Quality
+- 93 unit tests and 13 end-to-end tests (up from 53 and 12).
+- `npm run dev:app` runs the real desktop window against the live dev server.
+
+---
+
 ## [1.2.0] - 2026-09-24
 
 ### 🖥️ A real desktop app, a safer delete, and 16× faster scans

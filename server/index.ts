@@ -13,7 +13,11 @@ import { inspectFolder, invalidateInspections } from './folderInspect';
 import { listDrives } from './drives';
 import { getSystemTips } from './systemTips';
 import { sanitizeConfig, type AppConfig } from './config';
-import { detectInstalledAISoftware } from './softwareDetector';
+import { detectSoftwareInventory } from './softwareInventory';
+import { registerDockerWslRoutes } from './routes/dockerWsl';
+import { registerReclaimExtrasRoutes } from './routes/reclaimExtras';
+import { registerInsightsRoutes } from './routes/insights';
+import { recordScan } from './growthHistory';
 import { convertTranscripts, listAvailableTranscriptApps } from './transcriptConverter';
 import type { SystemMetrics, AICacheItem, AISoftwareAppItem } from '../src/types';
 import path from 'path';
@@ -80,6 +84,11 @@ app.use(cors({
 // parser is a trivial memory-exhaustion vector.
 app.use(express.json({ limit: '1mb' }));
 
+// Feature routes kept in their own modules.
+registerDockerWslRoutes(app);
+registerReclaimExtrasRoutes(app);
+registerInsightsRoutes(app, { getProcesses: scanAIProcesses });
+
 
 // Two settings were removed rather than implemented, because implementing them
 // would have contradicted guarantees the product makes everywhere else:
@@ -96,6 +105,7 @@ const defaultConfig: AppConfig = {
   restorePointPolicy: 'PROMPT',
   customRestorePath: path.join(os.homedir(), 'Desktop', 'Restored_AI_Files'),
   reminderEnabled: false,
+  thresholdNotify: false,
   reminderGb: 5
 };
 
@@ -173,7 +183,7 @@ async function getDetectedSoftware(forceRefresh = false): Promise<AISoftwareAppI
   softwareInFlight = (async () => {
     try {
       const processes = await scanAIProcesses();
-      const list = await detectInstalledAISoftware(processes);
+      const list = await detectSoftwareInventory(processes);
       cachedSoftware = { at: Date.now(), list };
       return list;
     } finally {
@@ -201,6 +211,7 @@ async function getScannedItems(forceRefresh = false): Promise<AICacheItem[]> {
       const items = await scanAICaches();
       cachedScan = { at: Date.now(), items };
       saveScanToDisk(items);
+      void recordScan(items).catch(() => {});
       return items;
     } finally {
       scanInFlight = null;
@@ -684,6 +695,10 @@ app.post('/api/purge-software', async (req, res) => {
 
     if (!targetSoftware) {
       return res.status(400).json({ error: `Unknown software id: ${softwareId}` });
+    }
+    // Runtimes and toolchains (Docker, Node, Python…) are never removed from here.
+    if (!targetSoftware.canUninstall) {
+      return res.status(403).json({ error: `${targetSoftware.name} is shown for information only and cannot be removed here.` });
     }
 
     // Snapshot the software's GENUINE detected caches (now populated by the

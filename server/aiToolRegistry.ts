@@ -31,7 +31,8 @@ export const SEARCH_ROOTS = [
   path.join(appDataLocal, 'Programs'),
   programFiles,
   path.join(home, '.cache'),
-  path.join(home, '.config')
+  path.join(home, '.config'),
+  path.join(home, '.local', 'share')
 ];
 
 /**
@@ -70,12 +71,31 @@ const TOOL_SIGNATURES: { match: RegExp; name: string; vendor: string; kind: stri
   { match: /^opencode/, name: 'OpenCode', vendor: 'OpenCode', kind: 'Coding agent' },
   { match: /^zed$/, name: 'Zed', vendor: 'Zed', kind: 'AI code editor' },
   { match: /^void$/, name: 'Void', vendor: 'Void', kind: 'AI code editor' },
-  { match: /^(c)?agents?$/, name: 'Agent workspace', vendor: 'Unknown', kind: 'Coding agent' },
+  // ~/.agents/skills and ~/.agent/skills: skills installed for coding agents.
+  { match: /^agents?$/, name: 'Agent skills', vendor: 'Agent Skills', kind: 'Skills for coding agents' },
+  { match: /^cagent$/, name: 'Docker cagent', vendor: 'Docker', kind: 'Agent runtime' },
+  { match: /^agent-browser$/, name: 'agent-browser browsers', vendor: 'Vercel', kind: 'Browser for agents' },
+  { match: /^gstack$/, name: 'gstack', vendor: 'gstack', kind: 'Agent skills pack' },
+  { match: /^kilo(code)?$/, name: 'Kilo Code', vendor: 'Kilo', kind: 'Coding agent' },
+  { match: /^zcode$/, name: 'ZCode', vendor: 'Z.ai', kind: 'AI coding app' },
+  { match: /^wispr ?flow$/, name: 'Wispr Flow', vendor: 'Wispr', kind: 'AI dictation' },
+  { match: /^open-?whispr$/, name: 'OpenWhispr', vendor: 'OpenWhispr', kind: 'AI dictation' },
+  { match: /^upscayl$/, name: 'Upscayl', vendor: 'Upscayl', kind: 'AI image upscaler' },
+  { match: /^eigent$/, name: 'Eigent', vendor: 'Eigent', kind: 'Multi-agent desktop' },
+  { match: /^com\.differentai\.openwork$/, name: 'OpenWork', vendor: 'Different AI', kind: 'Agent desktop' },
+  { match: /^ai\.opencode/, name: 'OpenCode', vendor: 'OpenCode', kind: 'Coding agent' },
+  { match: /^com\.superhuman/, name: 'Superhuman', vendor: 'Superhuman', kind: 'AI email' },
+  { match: /^grammarly$|^com\.grammarly/, name: 'Grammarly', vendor: 'Grammarly', kind: 'AI writing assistant' },
+  { match: /^chrome-devtools-mcp$/, name: 'Chrome DevTools MCP', vendor: 'Google', kind: 'MCP server' },
+  { match: /^next-devtools-mcp$/, name: 'Next.js DevTools MCP', vendor: 'Vercel', kind: 'MCP server' },
+  { match: /^stitch-mcp$/, name: 'Stitch MCP', vendor: 'Google', kind: 'MCP server' },
+  { match: /^memorybridge$/, name: 'MemoryBridge', vendor: 'MemoryBridge', kind: 'MCP server' },
+  { match: /^code-review-graph$/, name: 'code-review-graph', vendor: 'code-review-graph', kind: 'MCP server' },
   { match: /^mcp/, name: 'MCP servers', vendor: 'Model Context Protocol', kind: 'Tool servers' }
 ];
 
 /** Directories that look AI-ish by name but are this app's own, or noise. */
-const EXCLUDE = /^(ai-cache-cleaner|ai-hygiene|npm|cache|config|local|ssh|docker|bun|chocolatey)$/;
+const EXCLUDE = /^(ai-cache-cleaner|ai-clutter-cleaner|ai-hygiene|npm|cache|config|local|ssh|docker|bun|chocolatey)$/;
 
 export interface DiscoveredTool {
   /** Stable id derived from the product name. */

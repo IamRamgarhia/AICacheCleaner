@@ -79,3 +79,13 @@ export async function downloadUpdate(
 export function onAppCommand(handler: (cmd: string) => void): () => void {
   return api()?.onCommand?.(handler) ?? (() => undefined);
 }
+
+const icons = new Map<string, Promise<string | null>>();
+
+/** An app's own icon as a data URL (Electron only); null in the browser or when it has none. */
+export function fileIcon(exePath: string): Promise<string | null> {
+  const native = (window as unknown as { electronAPI?: { fileIcon?: (p: string) => Promise<string | null> } }).electronAPI;
+  if (!native?.fileIcon) return Promise.resolve(null);
+  if (!icons.has(exePath)) icons.set(exePath, native.fileIcon(exePath).catch(() => null));
+  return icons.get(exePath)!;
+}

@@ -35,3 +35,6 @@ Thumbs.db
 # Test output
 test-results/
 playwright-report/
+
+# Scratch folders from tools and tests
+tmp/
