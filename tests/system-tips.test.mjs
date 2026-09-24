@@ -1,3 +1,4 @@
+import { bundle } from './bundle-helper.mjs';
 // Tests for the Windows "system tips" report.
 //
 // The module only measures and describes; it must never suggest deleting a
@@ -33,19 +34,7 @@ before(() => {
     'utf-8'
   );
   try {
-    execFileSync(
-      process.execPath,
-      [
-        path.join(repoRoot, 'node_modules', 'esbuild', 'bin', 'esbuild'),
-        entry,
-        '--bundle',
-        '--platform=node',
-        '--target=node18',
-        `--outfile=${outfile}`,
-        '--format=cjs'
-      ],
-      { cwd: repoRoot, stdio: 'pipe' }
-    );
+    bundle(entry, outfile);
     lib = require(outfile);
   } finally {
     fs.rmSync(entry, { force: true });

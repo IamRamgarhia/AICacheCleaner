@@ -1,3 +1,4 @@
+import { bundle } from './bundle-helper.mjs';
 // Tests for the logic that decides WHAT GETS DELETED.
 //
 // This is the highest-consequence code in the product: a mistake here removes a
@@ -39,19 +40,7 @@ before(() => {
   );
 
   try {
-    execFileSync(
-      process.execPath,
-      [
-        path.join(repoRoot, 'node_modules', 'esbuild', 'bin', 'esbuild'),
-        entry,
-        '--bundle',
-        '--platform=node',
-        '--target=node18',
-        `--outfile=${outfile}`,
-        '--format=cjs'
-      ],
-      { cwd: repoRoot, stdio: 'pipe' }
-    );
+    bundle(entry, outfile);
     lib = require(outfile);
   } finally {
     fs.rmSync(entry, { force: true });

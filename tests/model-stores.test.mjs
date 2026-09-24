@@ -6,7 +6,7 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { bundle } from './bundle-helper.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -31,19 +31,7 @@ before(() => {
   );
 
   try {
-    execFileSync(
-      process.execPath,
-      [
-        path.join(repoRoot, 'node_modules', 'esbuild', 'bin', 'esbuild'),
-        entry,
-        '--bundle',
-        '--platform=node',
-        '--target=node18',
-        `--outfile=${outfile}`,
-        '--format=cjs'
-      ],
-      { cwd: repoRoot, stdio: 'pipe' }
-    );
+    bundle(entry, outfile);
     lib = require(outfile);
   } finally {
     fs.rmSync(entry, { force: true });

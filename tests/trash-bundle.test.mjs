@@ -1,3 +1,4 @@
+import { bundle } from './bundle-helper.mjs';
 // Regression test for the bug class that shipped in v1.0.0: the app deleted
 // nothing in the packaged build because esbuild rewrote `import.meta.url` to
 // `{}` inside the ESM-only `trash` package, so its helper binary was resolved
@@ -17,23 +18,9 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aicc-trash-test-'));
 
-// Bundle with exactly the flags `npm run build:server` uses. If those flags
-// ever regress the ESM/import.meta handling again, this test fails.
-function bundle(entry, outfile) {
-  execFileSync(
-    process.execPath,
-    [
-      path.join(repoRoot, 'node_modules', 'esbuild', 'bin', 'esbuild'),
-      entry,
-      '--bundle',
-      '--platform=node',
-      '--target=node18',
-      `--outfile=${outfile}`,
-      '--format=cjs'
-    ],
-    { cwd: repoRoot, stdio: 'pipe' }
-  );
-}
+// `bundle` (tests/bundle-helper.mjs) uses the same esbuild flags as
+// `npm run build:server`. If those flags ever regress the ESM/import.meta
+// handling again, this test fails.
 
 test('bundled trashBridge moves a real file to the Recycle Bin / Trash', async () => {
   // The probe must live inside the repo so `trash` resolves from node_modules
