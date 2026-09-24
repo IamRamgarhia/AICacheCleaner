@@ -2,6 +2,8 @@ import path from 'path';
 import os from 'os';
 import type { AICacheItem, SafetyTier } from '../src/types';
 import { mapLimit, pathExists, readdirSafe, statSafe } from './fsAsync';
+import { discoverAITools } from './aiToolRegistry';
+import { dockerStoredBytes } from './dockerUsage';
 
 // How many directory reads / file stats may be in flight at once. High enough
 // to keep the disk busy, low enough to stay well under the fd limit.
@@ -235,15 +237,17 @@ async function buildProjectItem(
   return {
     id,
     name,
-    category: 'Antigravity',
+    // Was hardcoded 'Antigravity', which filed every project on D: under one
+    // AI tool. And a project is source code: shown for size, never deletable.
+    category: 'Your projects',
     path: projectPath,
     sizeBytes: size,
     formattedSize: formatBytes(size),
     tier: 'YELLOW',
-    canDelete: true,
+    canDelete: false,
     impactDescription: `Verified ${descriptor} on Drive ${drive}.${runnable ? ' Runnable on Localhost.' : ''}`,
     lastModified: stat.mtime.toISOString().split('T')[0],
-    safeReason: `Project folder located on Drive ${drive}. Contains AI project files, node_modules, or code transcripts.`,
+    safeReason: 'Your source code — this app only reports its size. Remove a project yourself if you mean to.',
     isRunnableProject: runnable
   };
 }
@@ -296,6 +300,92 @@ async function scanSecondaryDrives(): Promise<AICacheItem[]> {
   }
 
   return items;
+}
+
+function overlaps(a: string, b: string): boolean {
+  const x = path.normalize(a).toLowerCase();
+  const y = path.normalize(b).toLowerCase();
+  return x === y || x.startsWith(y + path.sep) || y.startsWith(x + path.sep);
+}
+
+/** Where a folder sits, so two folders both named "Antigravity IDE" are told apart. */
+function locationKind(dir: string): string {
+  const d = dir.toLowerCase();
+  if (d.includes(`${path.sep}programs${path.sep}`) || d.includes('program files')) return 'installed app';
+  if (d.includes(`${path.sep}roaming${path.sep}`)) return 'settings & state';
+  if (d.includes(`${path.sep}.cache${path.sep}`) || d.includes(`${path.sep}local${path.sep}`)) return 'local data';
+  return 'user folder';
+}
+
+const LOCK_MARKERS: { match: RegExp; reason: string }[] = [
+  { match: /^(update\.exe|app-\d[\w.]*|.+\.exe)$/i, reason: 'program files' },
+  { match: /^(\.git|package\.json|pyproject\.toml)$/i, reason: 'source code or a git repository' },
+  { match: /^(auth\.json|\.?credentials(\.json)?|.+\.pem)$/i, reason: 'login credentials' },
+  { match: /\.(sqlite3?|db)$/i, reason: 'a database' }
+];
+
+/**
+ * Why a discovered folder must not be offered for deletion, or null. Checks the
+ * folder and its direct children (a worktrees folder holds repos one level down).
+ */
+async function lockReason(dir: string): Promise<string | null> {
+  const hit = (names: string[]) => LOCK_MARKERS.find(m => names.some(n => m.match.test(n)))?.reason ?? null;
+  const top = await readdirSafe(dir);
+  const own = hit(top.map(e => e.name));
+  if (own) return own;
+  const children = top.filter(e => e.isDirectory()).slice(0, 200);
+  const nested = await mapLimit(children, IO_CONCURRENCY, async c =>
+    hit((await readdirSafe(path.join(dir, c.name))).map(e => e.name).filter(n => !/\.exe$/i.test(n))));
+  return nested.find(r => r !== null) ?? null;
+}
+
+/**
+ * Folders the tool discovery found that the fixed table above doesn't cover
+ * (e.g. ~/.antigravity-ide, ~/AppData/Roaming/Antigravity, ms-playwright).
+ * Without this the software view and the storage list disagreed on totals.
+ * Contents are unverified app data: YELLOW, so deleting needs the explicit
+ * acknowledgement in the pre-delete dialog.
+ */
+async function scanDiscoveredToolFolders(known: AICacheItem[]): Promise<AICacheItem[]> {
+  const tools = await discoverAITools();
+  const candidates = tools.flatMap(t => t.paths.map(p => ({ tool: t, path: p })))
+    .filter(c => !known.some(k => overlaps(k.path, c.path)));
+
+  const measured = await mapLimit(candidates, 4, async ({ tool, path: dir }) => {
+    const stat = await statSafe(dir);
+    if (!stat) return null;
+    const m = await measureDirectory(dir);
+    if (m.bytes === 0) return null;
+    const lockedBecause = await lockReason(dir);
+    const kind = lockedBecause === 'program files' ? 'installed app' : locationKind(dir);
+    const item: AICacheItem = {
+      id: `discovered-${dir.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      name: `${tool.name} — ${path.basename(dir)} (${kind})`,
+      category: tool.name,
+      path: dir,
+      sizeBytes: m.bytes,
+      formattedSize: formatBytes(m.bytes),
+      tier: 'YELLOW',
+      // Program folders are removed by uninstalling; folders holding code,
+      // databases or logins are never offered — open them and decide by hand.
+      canDelete: kind !== 'installed app' && !lockedBecause,
+      impactDescription: kind === 'installed app'
+        ? `${tool.kind} program files. Uninstall it from Windows Settings > Apps instead of deleting the folder.`
+        : lockedBecause
+          ? `${tool.kind} data that contains ${lockedBecause}. Not deletable here — open the folder and remove only what you are sure of.`
+          : `${tool.kind} data found on disk. May hold settings, extensions, chats or history — open the folder and check before deleting.`,
+      lastModified: stat.mtime.toISOString().split('T')[0],
+      safeReason: lockedBecause || kind === 'installed app'
+        ? 'Locked: deleting this could lose code, logins, databases or break the app.'
+        : 'Not verified as rebuildable. Deleting goes to the Recycle Bin after a caution prompt.',
+      idleDays: idleDaysFor(m.newestMtimeMs)
+    };
+    return item;
+  });
+  // Nested discoveries (a tool folder inside another) would double-list bytes.
+  const found = measured.filter((i): i is AICacheItem => i !== null)
+    .sort((a, b) => a.path.length - b.path.length);
+  return found.filter((item, idx) => !found.slice(0, idx).some(prev => overlaps(prev.path, item.path)));
 }
 
 export async function scanAICaches(): Promise<AICacheItem[]> {
@@ -673,7 +763,17 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
       canDelete: false,
       reclaimCommandId: 'docker-prune',
       impactDescription: 'Every Docker image, container and volume lives in this one file. It grows and never shrinks on its own.',
-      safeReason: 'DO NOT DELETE — this file is your Docker data. Free space with "docker system prune -a", then compact the disk. Both are available as one-click actions.'
+      safeReason: 'DO NOT DELETE — this file is your Docker data. Free space with "docker system prune -a" (one click), then compact the disk (copy the admin command under Tool cleanup).'
+    },
+    {
+      id: 'chrome-on-device-model',
+      name: 'Chrome on-device AI model (Gemini Nano)',
+      category: 'Chrome AI' as const,
+      path: path.join(localAppData, 'Google', 'Chrome', 'User Data', 'OptGuideOnDeviceModel'),
+      tier: 'YELLOW' as SafetyTier,
+      canDelete: true,
+      impactDescription: 'Model weights Chrome downloads for "Help me write" and scam detection. Chrome downloads it again unless you turn it off.',
+      safeReason: 'Best way: Chrome > Settings > System > turn off "On-device AI" — Chrome removes it itself. Deleting the folder alone only frees it until Chrome redownloads it.'
     },
     {
       id: 'gradle-cache',
@@ -754,6 +854,8 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
 
   for (const item of scanned) if (item) targets.push(item);
 
+  targets.push(...(await scanDiscoveredToolFolders(targets)));
+
   const secondaryItems = await scanSecondaryDrives();
   for (const item of secondaryItems) {
     if (!targets.some(t => t.path.toLowerCase() === item.path.toLowerCase())) {
@@ -761,5 +863,19 @@ export async function scanAICaches(): Promise<AICacheItem[]> {
     }
   }
 
-  return targets;
+  return withDockerTrappedSpace(targets);
+}
+
+/**
+ * The Docker disk file never shrinks on its own, so its size says nothing about
+ * what's in it. Report the gap between the file and what Docker stores — the
+ * space a compact hands back to Windows. Only when Docker answers; no guessing.
+ */
+async function withDockerTrappedSpace(items: AICacheItem[]): Promise<AICacheItem[]> {
+  if (!items.some(i => i.id === 'docker-wsl-disk')) return items;
+  const stored = await dockerStoredBytes();
+  if (stored === null) return items;
+  return items.map(i => i.id === 'docker-wsl-disk'
+    ? { ...i, trappedBytes: Math.max(0, i.sizeBytes - stored) }
+    : i);
 }

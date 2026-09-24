@@ -1,7 +1,14 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import os from 'os';
+import path from 'path';
 
 const execFileAsync = promisify(execFile);
+
+const DOCKER_DATA_VHDX = path.join(
+  process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'),
+  'Docker', 'wsl', 'disk', 'docker_data.vhdx'
+);
 
 /**
  * Tool-native cleanup commands.
@@ -23,8 +30,8 @@ export interface ReclaimCommand {
   label: string;
   /** Read-only: shows what would be freed. Safe to run any time. */
   preview: { bin: string; args: string[] };
-  /** The actual cleanup. */
-  run: { bin: string; args: string[] };
+  /** The actual cleanup. Absent = manual only (needs admin or a stopped app). */
+  run?: { bin: string; args: string[] };
   /** Copy-pasteable form, for users who would rather run it themselves. */
   manual: string;
   note: string;
@@ -53,12 +60,22 @@ export const RECLAIM_COMMANDS: ReclaimCommand[] = [
     id: 'docker-compact',
     tool: 'Docker',
     label: 'Shrink the virtual disk after pruning',
-    preview: { bin: 'wsl', args: ['--list', '--verbose'] },
-    run: { bin: 'wsl', args: ['--manage', 'docker-desktop', '--set-sparse', 'true'] },
-    manual: 'wsl --manage docker-desktop --set-sparse true',
+    preview: { bin: 'docker', args: ['system', 'df'] },
+    // No `run`: this needs an elevated shell and Docker fully stopped, so it
+    // is shown to copy, never executed from here. The previous one-click
+    // `wsl --manage docker-desktop --set-sparse true` targeted the docker-desktop
+    // distro's own 0.1 GB disk, not docker_data.vhdx, and freed nothing.
+    manual:
+      'wsl --shutdown; ' +
+      // Inside a single-quoted PowerShell string a quote is escaped by doubling.
+      `Set-Content "$env:TEMP\\compact-docker.txt" 'select vdisk file="${DOCKER_DATA_VHDX.replace(/'/g, "''")}"','attach vdisk readonly','compact vdisk','detach vdisk'; ` +
+      'diskpart /s "$env:TEMP\\compact-docker.txt"',
     note:
-      'Pruning frees space INSIDE the virtual disk but the .vhdx file on your drive stays the same size. ' +
-      'This marks it sparse so Windows can reclaim the freed blocks. Run it after a prune, with Docker stopped.',
+      'Pruning frees space INSIDE docker_data.vhdx but the file on your drive stays the same size. ' +
+      'Compare "docker system df" with the file size: the gap is what this returns to Windows. ' +
+      'Quit Docker Desktop first (tray icon → Quit) and wait for any build to finish, then paste this into PowerShell run as administrator. ' +
+      '"wsl --shutdown" stops ALL WSL distros, so save work in any Linux terminals first. ' +
+      'It only releases empty blocks — images, containers and volumes are kept.',
     needsDaemon: false
   },
   {
@@ -155,7 +172,8 @@ export async function listAvailableReclaimCommands() {
       label: c.label,
       manual: c.manual,
       note: c.note,
-      available: await isAvailable(c.run.bin)
+      canRun: Boolean(c.run),
+      available: await isAvailable((c.run ?? c.preview).bin)
     }))
   );
 }
@@ -172,6 +190,7 @@ export async function runReclaimCommand(
   if (!cmd) return { ok: false, output: `Unknown command: ${id}`, command: '' };
 
   const spec = mode === 'preview' ? cmd.preview : cmd.run;
+  if (!spec) return { ok: false, output: 'This one must be run by hand — copy the command above.', command: cmd.manual };
   const display = `${spec.bin} ${spec.args.join(' ')}`;
 
   if (!(await isAvailable(spec.bin))) {

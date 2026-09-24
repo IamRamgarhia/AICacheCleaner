@@ -6,101 +6,145 @@ import pidusage from 'pidusage';
 
 const execFileAsync = promisify(execFile);
 
+const AI_PROCESS = /node|python|ollama|cursor|antigravity|claude|electron|codex|tsx|vite/i;
+
+/** Idle must hold this long across scans before a process is flagged. */
+const IDLE_AFTER_MS = 10 * 60_000;
+/** CPU seconds a process may burn between scans and still count as quiet. */
+const QUIET_CPU_SECONDS = 0.5;
+const IDLE_MIN_MB = 150;
+
+// CPU seconds at the start of each process's quiet period. A single snapshot
+// can't tell "idle" from "between bursts"; history across scans can. Keyed by
+// pid + start time so a reused PID never inherits another process's history.
+const cpuHistory = new Map<string, { baseCpu: number; quietSince: number }>();
+// Only processes from the latest scan may be stopped, and only while the PID
+// still belongs to the same process (Windows reuses PIDs quickly).
+let lastScanned = new Map<number, { name: string; created: number }>();
+
+interface WinProc { pid: number; ppid: number; name: string; exe: string; cmd: string; memMb: number; cpuSec: number; created: number }
+
+// One CIM query gives parent, command line and cumulative CPU; windowed PIDs
+// come from Get-Process. tasklist gave none of these.
+const PS_QUERY = `
+$w = @(Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object { $_.Id })
+$all = Get-CimInstance Win32_Process
+$p = $all | Where-Object { $_.Name -match '${AI_PROCESS.source}' } | ForEach-Object {
+  [pscustomobject]@{ pid=[int]$_.ProcessId; ppid=[int]$_.ParentProcessId; name=$_.Name; exe=[string]$_.ExecutablePath;
+    cmd=[string]$_.CommandLine; memMb=[math]::Round($_.WorkingSetSize/1MB); cpuSec=($_.KernelModeTime+$_.UserModeTime)/1e7;
+    created=$(if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc() } else { 0 }) } }
+@{ procs=@($p); windowed=$w; alive=@($all | ForEach-Object { [int]$_.ProcessId }) } | ConvertTo-Json -Depth 3 -Compress`;
+
+/** First non-flag argument after `marker` in a command line, unquoted. */
+function argAfter(cmd: string, marker: string): string {
+  const rest = cmd.slice(cmd.toLowerCase().indexOf(marker) + marker.length).replace(/"/g, ' ');
+  return rest.split(/\s+/).filter(t => t && !t.startsWith('-')).join(' ');
+}
+
+/** Human label from the real command line instead of guessing by exe name. */
+export function describeProcess(name: string, exe: string, cmd: string): string {
+  const n = name.toLowerCase();
+  const c = `${exe} ${cmd}`.toLowerCase().replace(/\\/g, '/');
+  const helper = /--type=/.test(c) ? ' (helper)' : '';
+  const ext = c.match(/extensions\/(?:node_modules\/)?([^/"\s]+)/)?.[1];
+
+  if (n.startsWith('claude') && (c.includes('--output-format stream-json') || c.includes('claude-code'))) {
+    return c.includes('antigravity') ? 'Claude Code (in Antigravity)' : 'Claude Code session';
+  }
+  const app = n.startsWith('claude') ? 'Claude Desktop' : n.startsWith('antigravity') ? 'Antigravity IDE' : n.startsWith('cursor') ? 'Cursor' : '';
+  if (app) {
+    if (helper) return `${app}${helper}`;
+    if (ext) return `${app} extension: ${ext}`;
+    return c.includes('--max-old-space-size') ? `${app} extension host` : app;
+  }
+  if (n.startsWith('ollama')) return 'Ollama model runner';
+  if (c.includes('npx-cli.js')) return `npx launcher: ${argAfter(cmd, 'npx-cli.js').split(' ')[0].replace(/@latest$/, '')}`;
+  if (c.includes('npm-cli.js')) return `npm ${argAfter(cmd, 'npm-cli.js')}`.trim();
+  if (c.includes('vite')) return c.includes(' build') ? 'Vite build' : 'Vite dev server';
+  if (n.startsWith('node')) {
+    // Last node_modules package on the line is the thing actually running.
+    const pkgs = [...c.matchAll(/node_modules\/(?:\.bin\/+\.\.\/+)?(@[^/"\s]+\/[^/"\s]+|[^/"\s]+)/g)].map(m => m[1]);
+    const pkg = pkgs.filter(p => p !== 'npm').pop();
+    const script = cmd.match(/[^\s"\\/]+\.(?:c|m)?js\b/i)?.[0];
+    const what = pkg ?? (c.includes('memorybridge') ? 'memorybridge' : script);
+    if (!what) return 'Node.js process';
+    return /mcp|memorybridge/.test(what) ? `MCP server: ${what}` : `Node.js: ${what}`;
+  }
+  if (n.startsWith('python')) {
+    const mod = cmd.match(/-m\s+([\w.-]+)(.*)$/)?.[0].replace(/^-m\s+/, '') ?? argAfter(cmd, 'python.exe').split(/[\\/]/).pop();
+    return `Python: ${(mod || '').replace(/\.exe\b/i, '').trim() || 'process'}`;
+  }
+  return name;
+}
+
+/**
+ * Idle = no window, parent gone (orphaned), holding memory, and no CPU work
+ * across scans for IDLE_AFTER_MS. The old rule (>300 MB, <0.2% CPU in one
+ * sample) flagged an open-but-untouched editor window as idle.
+ */
+export function isIdleProcess(p: { memMb: number; hasWindow: boolean; parentAlive: boolean; quietMs: number; isSelf: boolean }): boolean {
+  return !p.isSelf && !p.hasWindow && !p.parentAlive && p.memMb >= IDLE_MIN_MB && p.quietMs >= IDLE_AFTER_MS;
+}
+
 export async function scanAIProcesses(): Promise<AIProcessItem[]> {
   const isWindows = os.platform() === 'win32';
   const processes: AIProcessItem[] = [];
 
   try {
     if (isWindows) {
-      // Use execFile with discrete args (no shell) instead of a shell string.
-      const { stdout } = await execFileAsync('tasklist', ['/FO', 'CSV', '/NH']);
-      const lines = stdout.split('\r\n').filter(Boolean);
+      const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PS_QUERY], { maxBuffer: 32 * 1024 * 1024 });
+      const data = JSON.parse(stdout) as { procs: WinProc[]; windowed: number[] | null; alive: number[] };
+      const windowed = new Set(data.windowed ?? []);
+      const alive = new Set(data.alive);
+      const selfPids = new Set([process.pid, process.ppid]);
+      const now = Date.now();
 
-      const candidatePids: { pid: number; name: string; memMb: number }[] = [];
-
-      for (const line of lines) {
-        const cleanLine = line.replace(/"/g, '');
-        const parts = cleanLine.split(',');
-        if (parts.length >= 5) {
-          const name = parts[0].trim();
-          const pid = parseInt(parts[1].trim(), 10);
-          const memKStr = parts.slice(4).join('').replace(/[^0-9]/g, '');
-          const memKb = parseInt(memKStr, 10) || 0;
-          const memMb = Math.round(memKb / 1024);
-
-          const nameLower = name.toLowerCase();
-          // Tightened matching: previously bare 'py'/'code'/'cmd'/'powershell'
-          // matched virtually every terminal/editor and inflated the counts.
-          // We match the real AI tool process names instead.
-          const isAiDevProcess =
-            nameLower.includes('node') ||
-            nameLower.includes('python') ||
-            nameLower.includes('ollama') ||
-            nameLower.includes('cursor') ||
-            nameLower.includes('antigravity') ||
-            nameLower.includes('claude') ||
-            nameLower.includes('electron') ||
-            nameLower.includes('codex') ||
-            nameLower.includes('tsx') ||
-            nameLower.includes('vite') ||
-            nameLower.includes('ollama');
-
-          if (isAiDevProcess && pid > 0) {
-            candidatePids.push({ pid, name, memMb });
-          }
-        }
-      }
-
-      // Query real CPU metrics using pidusage, then clear its internal cache so
-      // a long-running server doesn't accumulate history for every PID ever seen.
-      const pidsToQuery = candidatePids.slice(0, 30).map(c => c.pid);
+      const pidsToQuery = data.procs.map(p => p.pid);
       let realStats: { [key: number]: any } = {};
-
       try {
-        if (pidsToQuery.length > 0) {
-          realStats = await pidusage(pidsToQuery);
-        }
+        if (pidsToQuery.length > 0) realStats = await pidusage(pidsToQuery);
       } catch (e) {
-        // Fallback to 0% CPU on query error
+        // A PID that exited mid-query rejects the batch; fall back to 0% CPU.
       } finally {
         try { pidusage.clear(); } catch (e) { /* noop */ }
       }
 
-      for (const candidate of candidatePids) {
-        const stat = realStats[candidate.pid];
-        const cpuPercent = stat ? parseFloat(stat.cpu.toFixed(1)) : 0;
-        const memoryMb = stat ? Math.round(stat.memory / (1024 * 1024)) : candidate.memMb;
-        const nameLower = candidate.name.toLowerCase();
+      const nextHistory = new Map<string, { baseCpu: number; quietSince: number }>();
+      for (const p of data.procs) {
+        // CPU is measured from a fixed baseline taken when the quiet period
+        // began, so slow steady work (4% CPU) can't hide under a per-scan delta.
+        const key = `${p.pid}:${p.created}`;
+        const prev = cpuHistory.get(key);
+        const stillQuiet = prev !== undefined && p.cpuSec - prev.baseCpu <= QUIET_CPU_SECONDS;
+        const entry = stillQuiet ? prev : { baseCpu: p.cpuSec, quietSince: now };
+        nextHistory.set(key, entry);
+        const quietSince = entry.quietSince;
 
-        let toolName = 'AI Extension / Sidecar';
-        if (nameLower.includes('antigravity')) toolName = 'Antigravity Subagent Worker';
-        else if (nameLower.includes('cursor')) toolName = 'Cursor AI Language Extension';
-        else if (nameLower.includes('claude')) toolName = 'Claude Desktop Sidecar';
-        else if (nameLower.includes('ollama')) toolName = 'Ollama Local LLM Engine';
-        else if (nameLower.includes('node')) toolName = 'MCP Stdio Language Server';
-        else if (nameLower.includes('python') || nameLower.includes('py')) toolName = 'Python AI Crawler Engine';
-        else if (nameLower.includes('code')) toolName = 'VS Code Language Host';
-        else if (nameLower.includes('electron')) toolName = 'AI Desktop Electron App';
-        else if (nameLower.includes('rg')) toolName = 'Ripgrep Vector Indexer';
-        else if (nameLower.includes('vite') || nameLower.includes('tsx')) toolName = 'Localhost Web Dev Server';
-
-        // Real zombie heuristic: High memory usage with 0% CPU activity (idle orphan process)
-        const isZombie = memoryMb > 300 && cpuPercent < 0.2;
+        const stat = realStats[p.pid];
+        const memoryMb = stat ? Math.round(stat.memory / (1024 * 1024)) : p.memMb;
+        const isZombie = isIdleProcess({
+          memMb: memoryMb,
+          hasWindow: windowed.has(p.pid),
+          parentAlive: alive.has(p.ppid),
+          quietMs: now - quietSince,
+          isSelf: selfPids.has(p.pid)
+        });
 
         processes.push({
-          pid: candidate.pid,
-          // tasklist CSV does not report ppid; use 0 (unknown) rather than the
-          // misleading hardcoded 1, which previously could imply "init child".
-          ppid: 0,
-          name: candidate.name,
-          tool: toolName,
-          cpuPercent,
+          pid: p.pid,
+          ppid: p.ppid,
+          name: p.name,
+          tool: describeProcess(p.name, p.exe, p.cmd),
+          cpuPercent: stat ? parseFloat(stat.cpu.toFixed(1)) : 0,
           memoryMb,
           formattedMemory: `${memoryMb} MB`,
           isZombie,
-          command: `${candidate.name} (PID: ${candidate.pid})`
+          command: (p.cmd || p.exe || p.name).slice(0, 200)
         });
       }
+      cpuHistory.clear();
+      for (const [k, v] of nextHistory) cpuHistory.set(k, v);
+      lastScanned = new Map(data.procs.map(p => [p.pid, { name: p.name, created: p.created }]));
     } else {
       // macOS / Linux ps query (execFile, no shell)
       const { stdout } = await execFileAsync('ps', ['-ax', '-o', 'pid,ppid,%cpu,rss,command']);
@@ -139,7 +183,8 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
               cpuPercent,
               memoryMb: memMb,
               formattedMemory: `${memMb} MB`,
-              isZombie: ppid === 1 && cpuPercent < 0.2 && memMb > 300,
+              // Idle needs CPU history across scans, implemented on Windows only.
+              isZombie: false,
               command: command.length > 60 ? command.substring(0, 60) + '...' : command
             });
           }
@@ -150,10 +195,23 @@ export async function scanAIProcesses(): Promise<AIProcessItem[]> {
     console.error('Error scanning AI processes:', e);
   }
 
+  if (!isWindows) lastScanned = new Map(processes.map(p => [p.pid, { name: p.name, created: 0 }]));
   return processes;
 }
 
 export async function killProcess(pid: number): Promise<boolean> {
+  // Only processes this app listed may be stopped, and never itself. The
+  // endpoint previously accepted any PID on the machine.
+  const listed = lastScanned.get(pid);
+  if (!Number.isInteger(pid) || !listed || pid === process.pid || pid === process.ppid) return false;
+  if (os.platform() === 'win32') {
+    // Re-check the PID still belongs to the process the user saw; if it exited
+    // and Windows handed the number to another program, refuse.
+    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      `$p = Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}'; if ($p) { $p.Name + '|' + $p.CreationDate.ToFileTimeUtc() }`
+    ], { windowsHide: true, timeout: 15_000 }).catch(() => ({ stdout: '' }));
+    if (stdout.trim() !== `${listed.name}|${listed.created}`) return false;
+  }
   try {
     // execFile with discrete args — no shell, so the numeric pid cannot be
     // misinterpreted as command syntax even if the caller-side guard regresses.

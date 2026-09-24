@@ -3,7 +3,9 @@ export type SafetyTier = 'GREEN' | 'YELLOW' | 'RED';
 export type AICacheItem = {
   id: string;
   name: string;
-  category: 'Antigravity' | 'Cursor' | 'Windsurf' | 'Claude' | 'ChatGPT' | 'Ollama' | 'HuggingFace' | 'MCP Memory' | 'Vector DB' | 'VS Code Extension' | 'Dev Toolchain';
+  category: 'Antigravity' | 'Cursor' | 'Windsurf' | 'Claude' | 'ChatGPT' | 'Ollama' | 'HuggingFace' | 'MCP Memory' | 'Vector DB' | 'VS Code Extension' | 'Dev Toolchain'
+    // Discovered tools use their product name (GLM, Kimi, Playwright browsers...).
+    | (string & {});
   path: string;
   sizeBytes: number;
   formattedSize: string;
@@ -24,6 +26,9 @@ export type AICacheItem = {
   reclaimCommandId?: string;
   /** Days since the newest file inside changed. Undefined when unknown. */
   idleDays?: number;
+  /** Empty space inside a virtual disk file that compacting returns to the
+   *  drive (file size minus what the tool reports storing). */
+  trappedBytes?: number;
 };
 
 export type AIProcessItem = {

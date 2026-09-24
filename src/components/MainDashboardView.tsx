@@ -50,7 +50,8 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   loading,
   onRefresh,
   onCleanSelected,
-  onOpenFolder
+  onOpenFolder,
+  onNavigateTab
 }) => {
   const [launchingPath, setLaunchingPath] = useState<string | null>(null);
   const [launchMsg, setLaunchMsg] = useState<{ success: boolean; text: string } | null>(null);
@@ -78,6 +79,8 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   };
 
   const safeItems = items.filter(i => i.tier === 'GREEN' && i.canDelete);
+  // Shown only past 1 GB: small gaps are ext4 overhead, not worth a compact.
+  const dockerDisk = items.find(i => i.id === 'docker-wsl-disk' && (i.trappedBytes ?? 0) > 1024 ** 3);
 
   const visible = category ? items.filter(i => i.category === category) : items;
   const largest = [...visible].sort((a, b) => b.sizeBytes - a.sizeBytes).slice(0, 8);
@@ -151,6 +154,23 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         <Reading label="AI processes" value={String(metrics?.activeProcessCount ?? 0)} />
         <Reading label="Memory in use" value={metrics ? `${(metrics.totalAIRAMMb / 1024).toFixed(2)} GB` : '—'} />
       </div>
+
+      {/* The Docker disk file never shrinks, so its biggest saving is invisible
+          in any size column. Surface it; nothing here deletes data. */}
+      {dockerDisk && (
+        <div className="ins-note ins-note--warn" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+          <span style={{ flex: '1 1 200px', minWidth: 0 }}>
+            Docker&apos;s disk file is {formatBytes(dockerDisk.sizeBytes)} but stores only{' '}
+            {formatBytes(dockerDisk.sizeBytes - (dockerDisk.trappedBytes ?? 0))}. About{' '}
+            <strong>{formatBytes(dockerDisk.trappedBytes ?? 0)}</strong> of empty space can be given back to Windows by
+            compacting it — your images, containers and volumes are kept.
+          </span>
+          <button className="ins-btn" onClick={() => onNavigateTab('SAFE_DELETE')}>
+            Show me how
+          </button>
+        </div>
+      )}
 
       {/* Dense table */}
       <div className="ins-panel" style={{ padding: 'var(--ins-space-5)' }}>

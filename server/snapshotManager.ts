@@ -4,7 +4,8 @@ import os from 'os';
 import { moveToTrash } from './trashBridge';
 import { restoreFromRecycleBin } from './restoreEngine';
 import type { AICacheItem, SnapshotItem } from '../src/types';
-import { formatBytes } from './scanner';
+import { formatBytes, measureDirectory } from './scanner';
+import { recycleBinLimits, itemsThatSkipRecycleBin } from './recycleBinLimit';
 
 const snapshotDir = path.join(os.homedir(), '.ai-cache-cleaner', 'snapshots');
 
@@ -127,10 +128,32 @@ export async function restoreSnapshot(
   }
 }
 
-export async function deleteItemsSafely(targetPaths: string[]): Promise<{ success: boolean; movedToTrash: string[]; skipped: string[]; errors: string[] }> {
+export async function deleteItemsSafely(targetPaths: string[]): Promise<{
+  success: boolean;
+  movedToTrash: string[];
+  skipped: string[];
+  errors: string[];
+  /** Set when nothing was deleted because the bin could not take it all. */
+  refused: { path: string; reason: string }[];
+}> {
   const movedToTrash: string[] = [];
   const skipped: string[] = [];
   const errors: string[] = [];
+
+  // Every delete in the app routes through here, so this is where "always
+  // recoverable" is enforced. Sizes are re-measured now (the scan may be a day
+  // old) and the whole batch is refused if any of it would skip the bin.
+  const existing = targetPaths.filter(p => fs.existsSync(p));
+  const measured = await Promise.all(existing.map(async p => ({ path: p, sizeBytes: (await measureDirectory(p)).bytes })));
+  let refused: { path: string; reason: string }[];
+  try {
+    refused = itemsThatSkipRecycleBin(measured, await recycleBinLimits()).map(r => ({ path: r.item.path, reason: r.reason }));
+  } catch (e) {
+    refused = existing.map(p => ({ path: p, reason: `the Recycle Bin state could not be read (${(e as Error).message}), so recovery can't be guaranteed` }));
+  }
+  if (refused.length > 0) {
+    return { success: false, movedToTrash, skipped, errors, refused };
+  }
 
   for (const targetPath of targetPaths) {
     // A path that vanished between scan and clean is not a success. Report it
@@ -153,6 +176,7 @@ export async function deleteItemsSafely(targetPaths: string[]): Promise<{ succes
     success: errors.length === 0,
     movedToTrash,
     skipped,
-    errors
+    errors,
+    refused: []
   };
 }

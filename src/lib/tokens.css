@@ -471,6 +471,9 @@
   --ins-tool-openai:      #74a89a;
   --ins-tool-huggingface: #d4a95f;  /* amber-gold */
   --ins-tool-vscode:      #6f97c7;
+  --ins-tool-devtools:    #5b8a9e;  /* slate blue: Docker, package caches */
+  --ins-tool-projects:    #a89080;  /* taupe: your own code */
+  --ins-tool-browser:     #c2b280;  /* sand: Chrome AI, Playwright browsers (kept off the amber review hue) */
   --ins-tool-other:       #8b93a1;  /* neutral fallback */
 }
 

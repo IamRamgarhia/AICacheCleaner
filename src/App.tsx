@@ -185,6 +185,9 @@ export const App: React.FC = () => {
         }
         // Refresh even on partial failure — some items really were removed.
         fetchSystemData();
+      } else if (response.status === 403 || response.status === 409) {
+        // A refusal explains why nothing was deleted; too long for a toast.
+        window.alert(data.error);
       } else {
         showToast(`Error: ${data.error || 'Failed to clean items.'}`);
       }
@@ -240,6 +243,10 @@ export const App: React.FC = () => {
   };
 
   const handleKillProcess = async (pid: number) => {
+    const proc = processes.find(p => p.pid === pid);
+    const label = proc ? `${proc.tool} (${proc.name}, PID ${pid})` : `PID ${pid}`;
+    // Stopping a process loses its unsaved work, so every stop is confirmed.
+    if (!window.confirm(`Stop ${label}?\n\nAny unsaved work in it will be lost.`)) return;
     try {
       const res = await fetch('http://127.0.0.1:3333/api/processes/kill', {
         method: 'POST',

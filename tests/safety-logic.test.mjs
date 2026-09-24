@@ -31,7 +31,10 @@ before(() => {
   fs.writeFileSync(
     entry,
     `export { calculateNonOverlappingSize, hasJunkExtension, formatBytes } from './scanner';\n` +
-      `export { buildRestoreScript } from './restoreEngine';\n`,
+      `export { buildRestoreScript } from './restoreEngine';\n` +
+      `export { describeProcess, isIdleProcess } from './processInspector';\n` +
+      `export { itemsThatSkipRecycleBin } from './recycleBinLimit';\n` +
+      `export { parseDockerSize } from './dockerUsage';\n`,
     'utf-8'
   );
 
@@ -136,4 +139,69 @@ test('restore script quotes Windows paths without losing separators', () => {
 test("restore script escapes a single quote so it can't break out of the literal", () => {
   const script = lib.buildRestoreScript(["D:\\it's here"]);
   assert.ok(script.includes("'D:\\it''s here'"), "a quote must be doubled, not left to terminate the string");
+});
+
+// --- Process idle rule: a wrong "idle" here offers to kill a window you use ---
+
+const proc = over => ({ memMb: 800, hasWindow: false, parentAlive: false, quietMs: 15 * 60_000, isSelf: false, ...over });
+
+test('idle only when orphaned, windowless, quiet for 10 min and holding memory', () => {
+  assert.equal(lib.isIdleProcess(proc({})), true);
+  assert.equal(lib.isIdleProcess(proc({ hasWindow: true })), false, 'open editor window');
+  assert.equal(lib.isIdleProcess(proc({ parentAlive: true })), false, 'child of a running app');
+  assert.equal(lib.isIdleProcess(proc({ quietMs: 60_000 })), false, 'one quiet sample is not idle');
+  assert.equal(lib.isIdleProcess(proc({ memMb: 40 })), false);
+  assert.equal(lib.isIdleProcess(proc({ isSelf: true })), false, 'never flag this app');
+});
+
+test('process labels come from the command line', () => {
+  const d = lib.describeProcess;
+  assert.equal(d('claude.exe', 'C:/Program Files/WindowsApps/Claude_2/app/Claude.exe', ''), 'Claude Desktop');
+  assert.equal(d('claude.exe', '', '"Claude.exe" --type=renderer'), 'Claude Desktop (helper)');
+  assert.equal(d('claude.exe', '', 'c:/Users/x/.antigravity-ide/extensions/anthropic.claude-code/claude.exe --output-format stream-json'), 'Claude Code (in Antigravity)');
+  assert.equal(d('node.exe', '', 'node npx-cli.js -y @upstash/context7-mcp'), 'npx launcher: @upstash/context7-mcp');
+  assert.equal(d('node.exe', '', 'node D:/p/memorybridge/dist/server.js'), 'MCP server: memorybridge');
+  assert.equal(d('python.exe', '', 'python.exe -m code_review_graph serve'), 'Python: code_review_graph serve');
+  assert.equal(d('node.exe', '', 'node vite.js build'), 'Vite build');
+  assert.equal(d('node.exe', '', 'node app.js'), 'Node.js: app.js');
+  assert.equal(d('node.exe', '', 'node C:/npm-cache/_npx/98/node_modules/.bin//../@playwright/mcp/cli.js'), 'MCP server: @playwright/mcp');
+  assert.equal(d('Antigravity IDE.exe', '', '"Antigravity IDE.exe" c:/p/resources/app/extensions/json-language-features/server.js'), 'Antigravity IDE extension: json-language-features');
+});
+
+// --- Recycle Bin limit: a folder too big for the bin is deleted permanently ---
+
+const GB = 1024 ** 3;
+const bin = (bytes, usedBytes = 0, nukeOnDelete = false) => ({ bytes, usedBytes, nukeOnDelete });
+const refusedPaths = (items, limits) => lib.itemsThatSkipRecycleBin(items, limits).map(r => r.item.path);
+
+test('a selection that fits the Recycle Bin is allowed', () => {
+  const limits = new Map([['C:', bin(10 * GB)]]);
+  assert.deepEqual(refusedPaths([{ path: 'C:/a', sizeBytes: 2 * GB }, { path: 'C:/b', sizeBytes: 3 * GB }], limits), []);
+});
+
+test('the whole selection per drive is checked, not each item alone', () => {
+  // Two 5 GB items each fit a 10 GB bin, but together they would purge it.
+  const limits = new Map([['C:', bin(10 * GB)]]);
+  assert.deepEqual(refusedPaths([{ path: 'C:/a', sizeBytes: 5 * GB }, { path: 'C:/b', sizeBytes: 5 * GB }], limits), ['C:/a', 'C:/b']);
+});
+
+test('what is already in the bin counts against its room', () => {
+  const limits = new Map([['C:', bin(10 * GB, 8 * GB)]]);
+  assert.deepEqual(refusedPaths([{ path: 'C:/a', sizeBytes: 2 * GB }], limits), ['C:/a']);
+});
+
+test('drives with no bin, bin turned off, UNC and \\?\ paths are refused', () => {
+  const limits = new Map([['C:', bin(10 * GB)], ['E:', bin(50 * GB, 0, true)]]);
+  const paths = ['E:/stuff', 'Z:/stuff', String.raw`\\server\share\x`, String.raw`\\?\C:\x`];
+  assert.deepEqual(refusedPaths(paths.map(path => ({ path, sizeBytes: 1 })), limits), paths);
+});
+
+// --- Docker reports decimal units; a wrong parse misstates the trapped space ---
+
+test('docker sizes parse with decimal units', () => {
+  assert.equal(lib.parseDockerSize('5.581GB'), 5_581_000_000);
+  assert.equal(lib.parseDockerSize('115.8MB'), 115_800_000);
+  assert.equal(lib.parseDockerSize('81.38kB'), 81_380);
+  assert.equal(lib.parseDockerSize('0B'), 0);
+  assert.equal(lib.parseDockerSize('n/a'), 0);
 });

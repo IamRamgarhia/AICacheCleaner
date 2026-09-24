@@ -292,6 +292,13 @@ app.post('/api/clean', async (req, res) => {
       return res.status(400).json({ error: 'No valid items found for cleaning.' });
     }
 
+    // The UI greys these out, but the server is the trust boundary: a protected
+    // item (e.g. Docker's virtual disk) must never be deletable by request.
+    const locked = targetItems.filter((i: AICacheItem) => !i.canDelete);
+    if (locked.length > 0) {
+      return res.status(403).json({ error: `Protected, not deletable: ${locked.map(i => i.name).join(', ')}` });
+    }
+
     // Surface ids the UI asked for that no longer exist in the scan, instead of
     // silently cleaning a subset and reporting the requested count as success.
     const resolvedIds = new Set(targetItems.map(i => i.id));
@@ -305,18 +312,29 @@ app.post('/api/clean', async (req, res) => {
       : config.restorePointPolicy === 'NEVER' ? false
       : createRestorePoint !== false; // 'PROMPT' — defer to the dialog
 
+    // deleteItemsSafely expects the PATH STRINGS to delete, not the item objects.
+    // It refuses the whole batch if any of it would not fit in the Recycle Bin.
+    const result = await deleteItemsSafely(targetItems.map(i => i.path));
+    if (result.refused.length > 0) {
+      const nameOf = (p: string) => targetItems.find(i => i.path === p)?.name ?? p;
+      return res.status(409).json({
+        error: result.refused.map(r => `${nameOf(r.path)} — ${r.reason}.`).join('\n') +
+          '\nNothing was deleted. Select fewer items, empty the Recycle Bin, raise its size (right-click it > Properties), or open the folder and remove what you choose by hand.'
+      });
+    }
+
+    // Recorded after the move so the restore point lists only what really went
+    // to the bin (it is a manifest, not a copy).
+    const movedSet = new Set(result.movedToTrash);
     let snapshotId: string | undefined;
-    if (wantsSnapshot) {
+    if (wantsSnapshot && movedSet.size > 0) {
       const snap = await createSnapshot(
-        targetItems,
+        targetItems.filter(i => movedSet.has(i.path)),
         undefined,
         customRestoreFolder || config.customRestorePath
       );
       snapshotId = snap.snapshotId;
     }
-
-    // deleteItemsSafely expects the PATH STRINGS to delete, not the item objects.
-    const result = await deleteItemsSafely(targetItems.map(i => i.path));
 
     // Map the helper's real return shape ({ movedToTrash, errors }) onto the
     // API response, computing reclaimed bytes from the items we actually moved.
@@ -639,6 +657,11 @@ app.post('/api/purge-software', async (req, res) => {
     }
 
     const purgeResult = await deleteItemsSafely(purgeable.map(i => i.path));
+    if (purgeResult.refused.length > 0) {
+      return res.status(409).json({
+        error: purgeResult.refused.map(r => `${r.path} — ${r.reason}.`).join('\n') + '\nNothing was deleted.'
+      });
+    }
     const purgedSet = new Set(purgeResult.movedToTrash);
     const reclaimedBytes = purgeable
       .filter(i => purgedSet.has(i.path))

@@ -7,6 +7,7 @@ interface Cmd {
   label: string;
   manual: string;
   note: string;
+  canRun: boolean;
   available: boolean;
 }
 
@@ -39,6 +40,12 @@ export const ReclaimCommands: React.FC = () => {
   }, []);
 
   const exec = async (id: string, mode: 'preview' | 'run') => {
+    // These deletions bypass the Recycle Bin (the tool removes its own files),
+    // so every run is confirmed with exactly what will execute.
+    const cmd = commands.find(c => c.id === id);
+    if (mode === 'run' && cmd && !window.confirm(
+      `Run "${cmd.manual}"?\n\n${cmd.note}\n\nThis is done by ${cmd.tool} itself and does NOT go to the Recycle Bin. Use Preview first to see what it covers.`
+    )) return;
     setBusy(`${id}:${mode}`);
     try {
       const res = await fetch('http://127.0.0.1:3333/api/reclaim-run', {
@@ -92,7 +99,7 @@ export const ReclaimCommands: React.FC = () => {
                 className="ins-well ins-data"
                 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem' }}
               >
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.manual}</span>
+                <span style={{ flex: 1, minWidth: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{c.manual}</span>
                 <button
                   className="ins-btn ins-btn--quiet"
                   onClick={() => copy(c.id, c.manual)}
@@ -121,14 +128,18 @@ export const ReclaimCommands: React.FC = () => {
                 <button className="ins-btn" disabled={!!busy} onClick={() => exec(c.id, 'preview')}>
                   <Eye size={13} /> {busy === `${c.id}:preview` ? 'Checking…' : 'Preview'}
                 </button>
-                <button
-                  className="ins-btn ins-btn--primary"
-                  style={{ marginLeft: 'auto' }}
-                  disabled={!!busy}
-                  onClick={() => exec(c.id, 'run')}
-                >
-                  <Play size={13} /> {busy === `${c.id}:run` ? 'Running…' : 'Run cleanup'}
-                </button>
+                {c.canRun ? (
+                  <button
+                    className="ins-btn ins-btn--primary"
+                    style={{ marginLeft: 'auto' }}
+                    disabled={!!busy}
+                    onClick={() => exec(c.id, 'run')}
+                  >
+                    <Play size={13} /> {busy === `${c.id}:run` ? 'Running…' : 'Run cleanup'}
+                  </button>
+                ) : (
+                  <span className="ins-meta" style={{ marginLeft: 'auto', alignSelf: 'center' }}>Run it yourself as administrator</span>
+                )}
               </div>
             </div>
           );
