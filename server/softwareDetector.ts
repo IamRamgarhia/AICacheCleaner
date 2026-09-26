@@ -4,6 +4,41 @@ import type { AISoftwareAppItem, AIProcessItem, AICacheItem } from '../src/types
 import { getDirectorySize, formatBytes } from './scanner';
 import { mapLimit, pathExists, statSafe } from './fsAsync';
 import { discoverAITools } from './aiToolRegistry';
+import type { InstalledProgram } from './installedPrograms';
+import { isOwnFolder } from './catalogDetector';
+
+/**
+ * How each curated tool is recognised beyond its folders.
+ *   program — its name in Windows' installed-programs list (proves it's installed)
+ *   running — matched against the process name AND command line; only counted
+ *             when the tool is actually on disk, so a random python.exe no
+ *             longer marks OpenHands or Crawl4AI as running
+ *   dataOnly — caches/weights rather than an app: present means installed
+ */
+const RECOGNISE: Record<string, { program?: RegExp; running?: RegExp; dataOnly?: boolean }> = {
+  'sw-antigravity': { program: /^antigravity/i, running: /^antigravity/i },
+  'sw-cursor': { program: /^cursor/i, running: /^cursor/i },
+  'sw-claude': { program: /^claude/i, running: /^claude(\.exe)?$/i },
+  'sw-ollama': { program: /^ollama/i, running: /^ollama/i },
+  // VS Code itself is the "Visual Studio Code" toolchain row; this row is only
+  // the AI extensions' data, so it neither adopts the install nor Code.exe.
+  'sw-vscode-mcp': { dataOnly: true },
+  // Matched on how the tool is launched, not any path that mentions the word.
+  'sw-opendevin': { running: /-m\s+(openhands|opendevin)\b|[\\/](openhands|opendevin)(\.exe)?(\s|"|$)/i },
+  'sw-crawl4ai': { running: /-m\s+crawl4ai\b|[\\/]crwl(\.exe)?(\s|"|$)/i, dataOnly: true },
+  'sw-playwright': { dataOnly: true },
+  'sw-jan': { program: /^jan\b/i, running: /^jan(\.exe)?$/i },
+  'sw-anythingllm': { program: /^anythingllm/i, running: /^anythingllm/i },
+  'sw-huggingface-torch': { dataOnly: true },
+  'sw-continue': { dataOnly: true }
+};
+
+/** The installed program whose name starts with this tool's name, if any. */
+function programNamed(programs: InstalledProgram[], name: string): InstalledProgram | undefined {
+  const key = name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (key.length < 3) return undefined;
+  return programs.find(p => p.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().startsWith(key));
+}
 
 // Maps a software id to the AICacheItem category union. Keeps detected cache
 // items type-safe without per-call string juggling.
@@ -51,7 +86,7 @@ async function detectVersion(detectionPaths: string[]): Promise<string | undefin
   return undefined;
 }
 
-export async function detectInstalledAISoftware(runningProcesses: AIProcessItem[]): Promise<AISoftwareAppItem[]> {
+export async function detectInstalledAISoftware(runningProcesses: AIProcessItem[], programs: InstalledProgram[] = []): Promise<AISoftwareAppItem[]> {
   const softwareList: AISoftwareAppItem[] = [
     {
       id: 'sw-antigravity',
@@ -109,6 +144,7 @@ export async function detectInstalledAISoftware(runningProcesses: AIProcessItem[
       detectionPaths: [
         path.join(homeDir, '.ollama'),
         path.join(appDataLocal, 'Ollama'),
+        path.join(appDataLocal, 'Programs', 'Ollama'),
         path.join(programFiles, 'Ollama')
       ],
       executableName: 'ollama.exe',
@@ -126,7 +162,6 @@ export async function detectInstalledAISoftware(runningProcesses: AIProcessItem[
         path.join(homeDir, '.vscode'),
         path.join(appDataRoaming, 'Code')
       ],
-      executableName: 'code.exe',
       description: 'Model Context Protocol (MCP) stdio sidecars, language servers, and extension caches.',
       canUninstall: true,
       totalDiskSizeBytes: 0,
@@ -141,7 +176,6 @@ export async function detectInstalledAISoftware(runningProcesses: AIProcessItem[
         path.join(homeDir, '.opendevin'),
         path.join(appDataLocal, 'OpenDevin')
       ],
-      executableName: 'python.exe',
       description: 'Autonomous open-source AI software engineer clawbot and containerized worker.',
       canUninstall: true,
       totalDiskSizeBytes: 0,
@@ -156,7 +190,6 @@ export async function detectInstalledAISoftware(runningProcesses: AIProcessItem[
         path.join(homeDir, '.crawl4ai'),
         path.join(appDataLocal, 'Crawl4AI')
       ],
-      executableName: 'python.exe',
       description: 'LLM-friendly web crawler bot engine for markdown extraction and RAG pipelines.',
       canUninstall: true,
       totalDiskSizeBytes: 0,
@@ -280,6 +313,24 @@ export async function detectInstalledAISoftware(runningProcesses: AIProcessItem[
   // Detection walks several multi-GB directories per tool. Doing it
   // concurrently (and asynchronously) keeps the API responsive; the previous
   // sequential sync version made /api/software take ~50 s with the UI frozen.
+  // The installed program tells us where the app itself lives; add that
+  // folder so its size and version come from the real install.
+  for (const sw of softwareList) {
+    const rule = RECOGNISE[sw.id];
+    // Data-only entries (caches, weights) have no program; a loose name match
+    // there could adopt an unrelated app's folder.
+    const program = rule?.program ? programs.find(p => rule.program!.test(p.name)) : rule ? undefined : programNamed(programs, sw.name);
+    if (!program) continue;
+    const loc = program.installLocation ?? (program.iconPath ? path.dirname(program.iconPath) : undefined);
+    // The registry is user-writable and some installers write broad folders;
+    // a folder here becomes a size AND a "clean caches" root, so it must be the app's own.
+    if (loc && isOwnFolder(loc) && !sw.detectionPaths.some(d => path.resolve(d).toLowerCase() === path.resolve(loc).toLowerCase())) sw.detectionPaths.push(loc);
+    sw.iconPath = program.iconPath;
+    sw.publisher = program.publisher;
+    if (program.version) sw.version = `v${program.version.replace(/^v/i, '')}`;
+  }
+  const hasProgram = new Set(softwareList.filter(sw => sw.iconPath || sw.publisher).map(sw => sw.id));
+
   await mapLimit(softwareList, 4, async (sw) => {
     let totalBytes = 0;
     let anyPathExists = false;
@@ -320,34 +371,36 @@ export async function detectInstalledAISoftware(runningProcesses: AIProcessItem[
     sw.formattedDiskSize = formatBytes(totalBytes);
     sw.detectedCaches = detectedCaches;
 
-    if (anyPathExists) {
+    if (anyPathExists && !sw.version) {
       sw.version = await detectVersion(sw.detectionPaths);
     }
 
-    // Check if actively running in RAM. Parenthesized so precedence between
-    // the executable-name match (which needs sw.executableName defined) and the
-    // tool/id match is explicit — previously `&&`/`||` precedence silently
-    // dropped several tools from ACTIVE detection.
-    const swIdKey = sw.id.replace('sw-', '').toLowerCase();
-    const runningProc = runningProcesses.find(proc =>
-      (sw.executableName && proc.name.toLowerCase() === sw.executableName.toLowerCase()) ||
-      proc.tool.toLowerCase().includes(swIdKey)
-    );
+    const rule = RECOGNISE[sw.id];
+    const installed = hasProgram.has(sw.id);
+    const present = anyPathExists || installed;
+    const exe = sw.executableName?.toLowerCase();
+    const running = present
+      ? runningProcesses.filter(proc =>
+          (rule?.running ? rule.running.test(proc.name) || rule.running.test(proc.command) : false) ||
+          (!!exe && proc.name.toLowerCase() === exe))
+      : [];
 
-    if (runningProc) {
+    if (running.length > 0) {
       sw.status = 'ACTIVE IN RAM';
-      sw.pid = runningProc.pid;
-      sw.ramMb = runningProc.memoryMb;
-      sw.cpuPercent = runningProc.cpuPercent;
-    } else if (anyPathExists) {
-      // `detectedCaches` already holds exactly the detection paths that exist,
-      // so reuse it instead of a second round of existence checks.
-      const hasExecutable = detectedCaches.some(
-        c => c.path.includes('Programs') || c.path.includes('Program Files') || c.path.includes('AppData')
-      );
-      sw.status = hasExecutable ? 'INSTALLED ON DISK' : 'LAYING ON DISK (RESIDUAL)';
-    } else {
+      sw.pid = running[0].pid;
+      sw.ramMb = running.reduce((a, p) => a + p.memoryMb, 0);
+      sw.cpuPercent = Math.round(running.reduce((a, p) => a + p.cpuPercent, 0) * 10) / 10;
+      sw.processCount = running.length;
+    } else if (!present) {
       sw.status = 'NOT INSTALLED';
+    } else {
+      // Installed = Windows lists it, or its executable is in one of its folders.
+      // Settings and caches alone are what an uninstall leaves behind.
+      const exeFound = !!exe && (await Promise.all(sw.detectionPaths.map(d => pathExists(path.join(d, exe))))).some(Boolean);
+      // Only tools we know the executable of can be called left behind; a
+      // folder found by name (skills, MCP servers, CLI data) is just on disk.
+      const knowsInstall = !!exe || !!rule?.program;
+      sw.status = installed || exeFound || rule?.dataOnly || !knowsInstall ? 'INSTALLED ON DISK' : 'LAYING ON DISK (RESIDUAL)';
     }
   });
 

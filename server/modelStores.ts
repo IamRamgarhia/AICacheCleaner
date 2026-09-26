@@ -130,7 +130,7 @@ export function ollamaDisplayName(registry: string, namespace: string, model: st
   return registry === OLLAMA_DEFAULT_REGISTRY ? base : `${registry}/${namespace}/${model}:${tag}`;
 }
 
-async function listOllamaManifests(root: string): Promise<OllamaManifest[]> {
+export async function listOllamaManifests(root: string): Promise<OllamaManifest[]> {
   const manifestsDir = path.join(root, 'manifests');
   const found: Omit<OllamaManifest, 'mtimeMs' | 'digests'>[] = [];
   for (const registry of await subdirs(manifestsDir)) {

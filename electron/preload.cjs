@@ -4,6 +4,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   isElectron: true,
+  // 'mica' when the window paints Windows 11's material behind the page.
+  material: process.argv.includes('--aicc-material=mica') ? 'mica' : null,
+  fileIcon: (p) => ipcRenderer.invoke('app:fileIcon', p),
   confirm: (opts) => ipcRenderer.invoke('dialog:confirm', opts),
   alert: (opts) => ipcRenderer.invoke('dialog:alert', opts),
   pickFolder: (opts) => ipcRenderer.invoke('dialog:pickFolder', opts),

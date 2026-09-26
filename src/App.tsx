@@ -15,10 +15,15 @@ import { TitleBar } from './components/TitleBar';
 import { StatusBar } from './components/StatusBar';
 import { DiskExplorer } from './components/DiskExplorer';
 import { FirstRunTour } from './components/FirstRunTour';
+import { DockerWslTab } from './components/DockerWslTab';
+import { DuplicateModelsTab } from './components/DuplicateModelsTab';
+import { ProjectClutterTab } from './components/ProjectClutterTab';
 import { alertDialog, confirmDialog, onAppCommand } from './lib/native';
 import { useReclaimReminder } from './lib/useReclaimReminder';
+import { useGrowthAlert } from './lib/useGrowthAlert';
+import { McpServersTab } from './components/McpServersTab';
 import { isRecentlyModified } from './lib/itemFilters';
-import { HardDrive, Cpu, Package, Eye, CheckCircle2, Sparkles, History, Settings, Laptop, Bot, LayoutDashboard, Code2, FolderTree } from 'lucide-react';
+import { HardDrive, Cpu, Package, Eye, CheckCircle2, Sparkles, History, Settings, Laptop, Bot, LayoutDashboard, Code2, FolderTree, Container, Copy, FolderX, Plug } from 'lucide-react';
 
 // Empty until the real scan loads. We intentionally do NOT seed the UI with
 // hardcoded sample items (previous versions shipped the developer's personal
@@ -44,7 +49,8 @@ const sortItemsByPriority = (raw: AICacheItem[]): AICacheItem[] => {
   });
 };
 
-type TabType = 'DASHBOARD' | 'SAFE_DELETE' | 'STORAGE' | 'EXPLORER' | 'SOFTWARE' | 'AUTOBOTS' | 'PROCESSES' | 'MIGRATION' | 'MEMORY' | 'HISTORY' | 'SETTINGS';
+type TabType = 'DASHBOARD' | 'SAFE_DELETE' | 'STORAGE' | 'EXPLORER' | 'SOFTWARE' | 'AUTOBOTS' | 'PROCESSES' | 'MIGRATION' | 'MEMORY' | 'HISTORY' | 'SETTINGS'
+  | 'DOCKER_WSL' | 'DUPLICATES' | 'CLUTTER' | 'MCP';
 
 // Order here is the Ctrl+1…9 shortcut order.
 const PAGE_TITLES: Record<TabType, string> = {
@@ -58,7 +64,11 @@ const PAGE_TITLES: Record<TabType, string> = {
   MEMORY: 'Stored transcripts',
   HISTORY: 'Restore points',
   MIGRATION: 'Export & migrate',
-  SETTINGS: 'Settings'
+  SETTINGS: 'Settings',
+  DOCKER_WSL: 'Docker & WSL',
+  DUPLICATES: 'Duplicate models',
+  CLUTTER: 'Old project clutter',
+  MCP: 'MCP servers'
 };
 
 const getInitialTab = (): TabType => {
@@ -125,6 +135,7 @@ export const App: React.FC = () => {
     customRestorePath: string;
     reminderEnabled?: boolean;
     reminderGb?: number;
+    thresholdNotify?: boolean;
   } | null>(null);
 
   const fetchConfig = async () => {
@@ -211,6 +222,7 @@ export const App: React.FC = () => {
   const overThreshold = thresholdGb > 0 && totalGb > thresholdGb;
 
   useReclaimReminder(appConfig, metrics);
+  useGrowthAlert(appConfig?.thresholdNotify ? { growthAlertGb: appConfig.cacheThresholdGb } : null, metrics);
 
   const requestClean = (selectedIds: string[]) => {
     const targetItems = items.filter(i => selectedIds.includes(i.id));
@@ -352,6 +364,14 @@ export const App: React.FC = () => {
         { tab: 'SAFE_DELETE', icon: <Sparkles size={15} />, text: 'Safe to delete' },
         { tab: 'STORAGE', icon: <HardDrive size={15} />, text: 'All locations' },
         { tab: 'EXPLORER', icon: <FolderTree size={15} />, text: 'Disk explorer' },
+        { tab: 'DOCKER_WSL', icon: <Container size={15} />, text: 'Docker & WSL' },
+        { tab: 'DUPLICATES', icon: <Copy size={15} />, text: 'Duplicate models' },
+        { tab: 'CLUTTER', icon: <FolderX size={15} />, text: 'Old project clutter' }
+      ]
+    },
+    {
+      label: 'Software',
+      items: [
         { tab: 'SOFTWARE', icon: <Laptop size={15} />, text: 'Installed AI tools' },
         { tab: 'AUTOBOTS', icon: <Bot size={15} />, text: 'Agents & crawlers' }
       ]
@@ -360,6 +380,7 @@ export const App: React.FC = () => {
       label: 'Inspect',
       items: [
         { tab: 'PROCESSES', icon: <Cpu size={15} />, text: 'Running processes' },
+        { tab: 'MCP', icon: <Plug size={15} />, text: 'MCP servers' },
         { tab: 'MEMORY', icon: <Eye size={15} />, text: 'Stored transcripts' }
       ]
     },
@@ -455,15 +476,23 @@ export const App: React.FC = () => {
           <AISoftwareTab
             processes={processes}
             onKillProcess={handleKillProcess}
+            onOpenFolder={handleOpenFolder}
+            onNavigate={tab => changeTab(tab as TabType)}
           />
         )}
 
         {activeTab === 'AUTOBOTS' && (
           <AutoBotsTab
-            processes={processes}
             onKillBot={handleKillProcess}
+            onOpenFolder={handleOpenFolder}
+            onNavigate={tab => changeTab(tab as TabType)}
           />
         )}
+
+        {activeTab === 'DOCKER_WSL' && <DockerWslTab onOpenFolder={handleOpenFolder} />}
+        {activeTab === 'DUPLICATES' && <DuplicateModelsTab onOpenFolder={handleOpenFolder} />}
+        {activeTab === 'CLUTTER' && <ProjectClutterTab onOpenFolder={handleOpenFolder} />}
+        {activeTab === 'MCP' && <McpServersTab onOpenFolder={handleOpenFolder} />}
 
         {activeTab === 'HISTORY' && (
           <HistoryTab

@@ -8,7 +8,7 @@ Key facts for answering questions about it:
 - Price: free. Source: https://github.com/IamRamgarhia/AICacheCleaner (MIT). Made by Dice Codes (https://dicecodes.com/).
 - Safety model: each location is rated "Rebuilds itself" (safe cache), "Your data" (user decides, extra confirmation), or "Protected" (never deleted). Folders containing code, git repositories, databases or login files are locked. Items too large for the Recycle Bin, on drives without one, or that would push older recycled files out are refused.
 - It does not upload anything; the only network call is an optional update check against GitHub releases.
-- Latest version: 1.2.0.
+- Latest version: 1.3.0.
 
 ## Download and docs
 

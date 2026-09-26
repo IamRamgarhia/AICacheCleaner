@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Check, Copy, FolderOpen, MonitorCog, ShieldAlert } from 'lucide-react';
+import { LoadingState } from './LoadingState';
 
 interface Tip {
   id: string;
@@ -48,7 +49,7 @@ export const SystemTips: React.FC<{ onOpenFolder: (path: string) => void }> = ({
       </div>
 
       {tips === null ? (
-        <div className="ins-empty"><strong>Measuring system locations…</strong></div>
+        <LoadingState compact title="Measuring Windows locations" />
       ) : (
         <div className="ins-grid ins-grid--2col">
           {[...tips].sort((a, b) => b.bytes - a.bytes).map(tip => (

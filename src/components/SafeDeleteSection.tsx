@@ -6,6 +6,7 @@ import { formatBytes, idleLabel } from '../lib/format';
 import { openItemMenu } from '../lib/itemMenu';
 import { ReclaimCommands } from './ReclaimCommands';
 import { SystemTips } from './SystemTips';
+import { LoadingState } from './LoadingState';
 
 interface SafeDeleteSectionProps {
   items: AICacheItem[];
@@ -92,10 +93,7 @@ export const SafeDeleteSection: React.FC<SafeDeleteSectionProps> = ({
 
       <div className="ins-panel ins-split-list">
         {loading && safeItems.length === 0 ? (
-          <div className="ins-empty">
-            <strong>Scanning for safe caches…</strong>
-            Measuring each cache location on your drives.
-          </div>
+          <LoadingState live title="Finding caches that rebuild themselves" detail="Measuring each cache location on your drives." />
         ) : safeItems.length === 0 ? (
           <div className="ins-empty">
             <strong>Nothing to reclaim right now</strong>

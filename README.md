@@ -6,11 +6,19 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue.svg)](https://github.com/IamRamgarhia/AICacheCleaner/releases)
 [![Security: 100% On-Demand Offline](https://img.shields.io/badge/Security-100%25%20On--Demand%20Offline-success.svg)](#-100-on-demand-security-guarantee)
-[![Release: v1.2.0](https://img.shields.io/badge/Release-v1.2.0-brightgreen.svg)](https://github.com/IamRamgarhia/AICacheCleaner/releases)
+[![Latest release](https://img.shields.io/github/v/release/IamRamgarhia/AICacheCleaner?label=Latest%20release&color=brightgreen)](https://github.com/IamRamgarhia/AICacheCleaner/releases/latest)
 [![Website](https://img.shields.io/badge/Website-AICacheCleaner-2ea44f.svg)](https://iamramgarhia.github.io/AICacheCleaner/)
 
 <p align="center">
   <img src="screenshots/hero-banner.svg" alt="AICacheCleaner — Clean Claude, Cursor & Ollama Cache to Free Up Disk Space. 100% safe, FOSS, offline." width="100%" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/IamRamgarhia/AICacheCleaner/releases/latest/download/AICacheCleaner-Portable.exe">
+    <img src="https://img.shields.io/badge/Download%20for%20Windows-Free%20%C2%B7%20Portable%20%C2%B7%20Latest%20version-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download AICacheCleaner for Windows — always the latest version" height="64" />
+  </a>
+  <br />
+  <sub>One file, no install · always the newest release · <a href="https://github.com/IamRamgarhia/AICacheCleaner/releases">all versions &amp; changelog</a></sub>
 </p>
 
 ---
@@ -85,13 +93,13 @@ Beyond the fixed list above, AICacheCleaner **discovers** AI tool directories ac
 
 ---
 
-## 📥 Download AICacheCleaner (v1.2.0)
+## 📥 Download AICacheCleaner (v1.3.0)
 
 **Zero installation** — download the portable build and double-click to run.
 
 | OS | File | Size | Download |
 | :--- | :--- | :--- | :--- |
-| 🪟 **Windows 10/11** | `AICacheCleaner-Portable-1.2.0.exe` | ~76 MB | [⚡ Download Windows Portable](https://github.com/IamRamgarhia/AICacheCleaner/releases/download/v1.2.0/AICacheCleaner-Portable-1.2.0.exe) |
+| 🪟 **Windows 10/11** | `AICacheCleaner-Portable.exe` | ~80 MB | [⚡ Download the latest Windows Portable](https://github.com/IamRamgarhia/AICacheCleaner/releases/latest/download/AICacheCleaner-Portable.exe) |
 
 **Prefer a normal installed program?** After launching the portable build, open **Settings → Install as Native Windows App** to register it with Start Menu + Control Panel (the installer is generated from inside the app — no separate download).
 
@@ -144,6 +152,18 @@ Browse any drive largest-first, filling in live. Guided, copy-paste steps for th
 
 ### 12. ⌨️ Built Like Desktop Software
 Native title bar and dialogs, status bar with free space and Recycle Bin room, split view with details, right-click menus, tray icon, and keyboard control: **Ctrl+F** search, **↑/↓** move, **Space** select, **Enter** open, **Delete** delete (it still asks), **Ctrl+R** rescan, **Ctrl+1…9** switch pages.
+
+### 13. 🧭 Everything AI on Your PC, in One List
+Installed AI tools now lists **AI apps and agents**, **AI models** (LLMs in Ollama / LM Studio / Hugging Face plus image, video and speech models from ComfyUI, Forge, Fooocus, InvokeAI, Stability Matrix, Pinokio, Whisper, rembg), **apps with AI built in**, the **runtimes AI relies on** (Docker Desktop, WSL, Python, Node.js, Git, .NET, CUDA…) and **packages AI tools installed** (npm globals, Python AI libraries, uv/pipx tools) — read from Windows' installed-programs list, with each app's real icon. Runtimes and packages are shown for information only.
+
+### 14. 🐳 Docker & WSL Breakdown
+Images, containers, volumes and build cache with their sizes. Build cache and dangling images can be cleaned (they rebuild themselves); everything else is a copy-paste command with a plain warning. Every WSL distro's disk with the steps to compact it.
+
+### 15. 🧬 Duplicate Models & Old Project Clutter
+The same model stored twice across Ollama, LM Studio and Hugging Face (every byte compared before a copy can move), and `node_modules` / virtual environments / build output in projects you haven't touched for weeks — all to the Recycle Bin, never permanently.
+
+### 16. 🔌 MCP Servers & Growth Over Time
+Every MCP server configured in Claude, Cursor, VS Code, Windsurf, Gemini, Codex and friends, merged into one list with what's running and its memory (API keys are never shown). The overview charts how your AI storage grows, with an optional once-a-day notification when it passes your limit.
 
 ---
 
@@ -290,7 +310,7 @@ npm install
 npm run dev
 
 # 4. Build the Windows portable executable
-npm run build:win-portable    # produces dist-electron/AICacheCleaner-Portable-1.2.0.exe
+npm run build:win-portable    # produces dist-electron/AICacheCleaner-Portable-1.3.0.exe
 ```
 
 ---

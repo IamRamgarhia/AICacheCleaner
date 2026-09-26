@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import type { SystemMetrics, AICacheItem } from '../types';
 import { RefreshCw, FolderOpen, Rocket, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { FootprintStrip } from './FootprintStrip';
+import { GrowthPanel } from './GrowthPanel';
+import { LoadingState } from './LoadingState';
 import { openItemMenu } from '../lib/itemMenu';
-import '../lib/tokens.css';
 
 interface MainDashboardViewProps {
   metrics: SystemMetrics | null;
@@ -133,6 +134,10 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         </div>
       )}
 
+      {loading && items.length === 0 ? (
+        <LoadingState live title="Scanning your drives" detail="Measuring AI tools, app caches, models and developer caches. Results are saved, so the next launch opens instantly." />
+      ) : (
+      <>
       {/* Signature element */}
       <FootprintStrip
         items={items}
@@ -153,6 +158,8 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         <Reading label="AI processes" value={String(metrics?.activeProcessCount ?? 0)} />
         <Reading label="Memory in use" value={metrics ? `${(metrics.totalAIRAMMb / 1024).toFixed(2)} GB` : '—'} />
       </div>
+
+      <GrowthPanel refreshKey={metrics?.lastScanTimestamp} />
 
       {/* The Docker disk file never shrinks, so its biggest saving is invisible
           in any size column. Surface it; nothing here deletes data. */}
@@ -246,6 +253,8 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   );
 };

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, RefreshCw, Lock } from 'lucide-react';
+import { LoadingState } from './LoadingState';
 
 interface MemoryItem {
   id: string;
@@ -80,7 +81,7 @@ export const MemoryInspector: React.FC = () => {
       </header>
 
       {loading ? (
-        <div className="ins-empty">Reading local storage locations…</div>
+        <LoadingState title="Reading stored transcripts" detail="Looking through each AI tool's local history folders." />
       ) : failed ? (
         <div className="ins-note ins-note--error">
           Can&apos;t reach the local engine on port 3333. Make sure AICacheCleaner is running, then refresh.

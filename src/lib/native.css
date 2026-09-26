@@ -1,0 +1,242 @@
+/* ===========================================================================
+   Native layer — loaded last.
+
+   What made the app read as a website was less the colours than the habits:
+   a code font for every number and path, tracked-out uppercase labels, hand
+   cursors, big padded buttons and grids of cards. This layer swaps those for
+   what Windows 11 and macOS apps do: the OS font everywhere with tabular
+   figures, sentence-case labels, a default cursor, compact controls, and
+   lists with a details pane. On Windows 11 the window also paints Mica.
+   =========================================================================== */
+
+:root {
+  --ins-font-data: var(--ins-font-ui);
+  --ins-font-label: var(--ins-font-ui);
+  /* Commands the user copies are the one place a monospace face helps. */
+  --ins-font-code: 'Cascadia Mono', Consolas, 'SF Mono', ui-monospace, monospace;
+  --ins-select: rgba(255, 255, 255, 0.075);
+  --ins-select-strong: rgba(255, 255, 255, 0.11);
+  --ins-accent: #4cc2ff;
+}
+
+body { font-family: var(--ins-font-ui); }
+
+/* --- Type ------------------------------------------------------------------ */
+.ins-scope .ins-data { letter-spacing: 0; }
+.ins-scope .ins-label {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ins-mist-300);
+}
+.ins-scope .ins-table th {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ins-mist-500);
+}
+/* `.ins-table th` (left) outranked `.ins-num`, so number headers sat left of their numbers. */
+.ins-scope .ins-table th.ins-num { text-align: right; }
+.ins-scope .ins-tier { letter-spacing: 0; font-weight: 500; border-radius: 999px; }
+.ins-scope .ins-code,
+.ins-scope pre,
+.ins-scope code { font-family: var(--ins-font-code); font-size: 0.75rem; }
+
+/* Page header: a title and one quiet line, like a Settings page. */
+.ins-scope .ins-page-head { border-bottom: none; padding-bottom: 0; align-items: flex-end; }
+.ins-scope .ins-h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; }
+.ins-scope .ins-sub {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: var(--ins-mist-500);
+  max-width: 88ch;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ins-scope .ins-h2 { font-size: 0.875rem; font-weight: 600; color: var(--ins-mist-50); }
+
+/* --- Controls: desktop sizes, default cursor --------------------------------- */
+.ins-shell button,
+.ins-shell a,
+.ins-shell [role='button'],
+.ins-shell .ins-nav-btn,
+.ins-shell .ins-check { cursor: default; }
+.ins-scope .ins-btn { padding: 5px 12px; font-weight: 400; gap: 6px; }
+.ins-scope .ins-btn--icon { padding: 5px; }
+.ins-scope .ins-nav-btn { padding: 6px 10px; border-radius: 6px; }
+.ins-scope .ins-nav-btn.is-active::before { background: var(--ins-accent); height: 16px; width: 3px; border-radius: 2px; }
+
+.ins-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  width: 220px;
+  border-radius: 6px;
+  border: 1px solid var(--glass-border, var(--ins-graphite-700));
+  background: var(--glass-inset, var(--ins-graphite-850));
+  color: var(--ins-mist-500);
+}
+.ins-filter:focus-within { border-color: var(--ins-mist-500); }
+.ins-filter input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--ins-mist-50);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+/* --- List + details (Installed AI tools, Agents) ----------------------------- */
+.ins-list-wrap {
+  flex: 1;
+  min-width: 0;
+  max-height: calc(100vh - 190px);
+  overflow: auto;
+  outline: none;
+  padding: 0 4px 8px;
+}
+.ins-list-wrap:focus-visible { box-shadow: 0 0 0 1px var(--ins-mist-500); }
+.ins-scope .ins-list { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.ins-scope .ins-list th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 32px;
+  padding: 0 10px;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ins-mist-500);
+  background: rgba(18, 22, 29, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--glass-border, var(--ins-graphite-700));
+  white-space: nowrap;
+}
+.ins-list th button {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+.ins-list th button:hover { color: var(--ins-mist-50); }
+.ins-list th.ins-num button { flex-direction: row-reverse; }
+.ins-scope .ins-list td {
+  height: 36px;
+  padding: 0 10px;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: none;
+}
+.ins-list tbody tr.ins-row td:first-child { border-radius: 6px 0 0 6px; }
+.ins-list tbody tr.ins-row td:last-child { border-radius: 0 6px 6px 0; }
+.ins-list tbody tr.ins-row:hover td { background: rgba(255, 255, 255, 0.04); }
+.ins-list tbody tr.ins-row.is-selected td { background: var(--ins-select); }
+.ins-list tbody tr.ins-row.is-selected td:first-child { box-shadow: inset 3px 0 0 var(--ins-accent); }
+.ins-list:focus-within tbody tr.ins-row.is-selected td { background: var(--ins-select-strong); }
+
+.ins-list tr.ins-group-row td {
+  height: 34px;
+  padding-top: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ins-mist-300);
+}
+.ins-list tr.ins-group-row button {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+.ins-list tr.ins-group-row .ins-meta { font-weight: 400; margin-left: 8px; }
+
+.ins-appcell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ins-appcell-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ins-appcell-sub { color: var(--ins-mist-500); margin-left: 8px; font-size: 0.75rem; }
+.ins-appicon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #0b0e13;
+  overflow: hidden;
+}
+.ins-appicon img { width: 100%; height: 100%; object-fit: contain; }
+.ins-appicon--brand { background: rgba(255, 255, 255, 0.07); padding: 3px; }
+.ins-appicon--brand svg { width: 100%; height: 100%; }
+.ins-appicon--lg.ins-appicon--brand { padding: 6px; }
+.ins-appicon--lg { width: 32px; height: 32px; border-radius: 8px; font-size: 0.875rem; }
+
+.ins-status { display: inline-flex; align-items: center; gap: 6px; color: var(--ins-mist-300); }
+.ins-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--ins-mist-500); }
+.ins-status--running::before { background: var(--ins-safe); box-shadow: 0 0 0 3px var(--ins-safe-dim); }
+.ins-status--left::before { background: var(--ins-review); }
+.ins-status--left { color: var(--ins-review); }
+
+.ins-list-empty { padding: 32px 12px; text-align: center; color: var(--ins-mist-500); font-size: 0.8125rem; }
+
+/* Details pane beside the list. */
+.ins-split--app { gap: var(--ins-space-3); align-items: stretch; }
+.ins-split--app .ins-details { width: 380px; max-height: calc(100vh - 190px); }
+.ins-kv { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 10px; font-size: 0.8125rem; }
+.ins-kv dt { color: var(--ins-mist-500); }
+.ins-kv dd { color: var(--ins-mist-50); min-width: 0; overflow-wrap: anywhere; }
+.ins-pathrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 8px;
+  border-radius: 6px;
+  background: var(--glass-inset, var(--ins-graphite-850));
+  font-size: 0.75rem;
+  color: var(--ins-mist-300);
+}
+.ins-pathrow span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+/* --- Windows 11 Mica ---------------------------------------------------------- */
+/* The OS paints the material; the page stops covering it. Chrome (title bar,
+   sidebar, status bar) sits directly on Mica; the content area is one
+   lighter layer with a rounded corner, as in Settings and Explorer. */
+.has-mica body,
+.has-mica #root,
+.has-mica .ins-shell { background: transparent !important; }
+.has-mica .ins-titlebar,
+.has-mica .ins-sidebar,
+.has-mica .ins-statusbar {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: transparent;
+}
+.has-mica .ins-main {
+  background: rgba(32, 36, 44, 0.5);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  border-top-left-radius: 10px;
+}
+.has-mica .ins-scope .ins-panel,
+.has-mica .ins-scope .ins-card,
+.has-mica .ins-details,
+.has-mica .ins-actionbar {
+  background: rgba(255, 255, 255, 0.035);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+.has-mica .ins-scope .ins-list th { background: rgba(38, 42, 50, 0.96); }

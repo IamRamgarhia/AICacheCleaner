@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Upload, RefreshCw, ArrowRight, FolderOpen, CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { AISoftwareAppItem } from '../types';
+import { LoadingState } from './LoadingState';
 
 interface MigrationWizardProps {
   detectedSoftware?: AISoftwareAppItem[];
@@ -506,7 +507,7 @@ export const MigrationWizard: React.FC<MigrationWizardProps> = ({ detectedSoftwa
         <div className="ins-card">
           <span className="ins-label">Tools to include ({installedSoftware.length})</span>
           {loadingSoftware ? (
-            <div className="ins-meta">Scanning…</div>
+            <LoadingState compact title="Finding installed AI tools" />
           ) : installedSoftware.length === 0 ? (
             <div className="ins-meta">No AI tools detected. You can still export a project folder below.</div>
           ) : (

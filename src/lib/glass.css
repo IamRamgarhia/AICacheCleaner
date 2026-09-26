@@ -1,0 +1,181 @@
+/* ===========================================================================
+   Glass layer (macOS-style vibrancy).
+
+   A soft coloured backdrop sits behind the whole window; every surface on top
+   of it is translucent and blurred, with a hairline highlight on its top edge.
+   Loaded after tokens.css and shell.css, so it only restyles surfaces — the
+   safety colours (green / amber / red) and all text colours are untouched.
+   =========================================================================== */
+
+:root {
+  --glass-chrome: rgba(15, 19, 26, 0.62);       /* title bar, sidebar, status bar */
+  --glass-surface: rgba(26, 31, 41, 0.52);      /* panels, cards, panes */
+  --glass-raised: rgba(34, 40, 52, 0.62);       /* dialogs, menus, toasts */
+  --glass-inset: rgba(8, 11, 16, 0.34);         /* wells, inputs */
+  --glass-border: rgba(255, 255, 255, 0.075);
+  --glass-border-strong: rgba(255, 255, 255, 0.14);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --glass-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  --glass-blur: saturate(165%) blur(22px);
+  --ins-radius: 10px;
+}
+
+/* --- Backdrop the glass blurs ------------------------------------------ */
+.ins-shell {
+  background:
+    radial-gradient(900px 600px at 8% -10%, rgba(72, 199, 150, 0.13), transparent 60%),
+    radial-gradient(800px 700px at 105% 10%, rgba(107, 143, 212, 0.16), transparent 60%),
+    radial-gradient(900px 700px at 60% 120%, rgba(157, 142, 196, 0.12), transparent 60%),
+    #0a0d12;
+}
+
+/* --- Window chrome -------------------------------------------------------- */
+.ins-titlebar,
+.ins-sidebar,
+.ins-statusbar {
+  background: var(--glass-chrome);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-color: var(--glass-border);
+}
+.ins-titlebar-search {
+  background: var(--glass-inset);
+  border-color: var(--glass-border);
+  border-radius: 7px;
+}
+.ins-scope .ins-nav-btn { border-radius: 8px; }
+.ins-scope .ins-nav-btn.is-active {
+  background: rgba(255, 255, 255, 0.085);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-edge);
+}
+.ins-scope .ins-nav-btn:hover { background: rgba(255, 255, 255, 0.05); }
+
+/* --- Surfaces --------------------------------------------------------------- */
+.ins-scope .ins-panel,
+.ins-scope .ins-card,
+.ins-actionbar,
+.ins-details,
+.ins-segmented {
+  background: var(--glass-surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--ins-radius);
+  box-shadow: var(--glass-edge), var(--glass-shadow);
+}
+.ins-scope .ins-card { transition: border-color 0.15s ease, transform 0.15s ease; }
+.ins-scope .ins-card:hover { border-color: var(--glass-border-strong); }
+
+.ins-scope .ins-well,
+.ins-scope .ins-select,
+.ins-scope .ins-input,
+.ins-scope .ins-choice {
+  background: var(--glass-inset);
+  border-color: var(--glass-border);
+  border-radius: 7px;
+}
+.ins-scope .ins-choice--on { background: rgba(255, 255, 255, 0.07); border-color: var(--glass-border-strong); }
+
+.ins-scope .ins-note { border-radius: 8px; backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
+.ins-scope .ins-empty { border-color: var(--glass-border); border-radius: var(--ins-radius); background: rgba(255, 255, 255, 0.02); }
+
+/* --- Buttons: frosted, not flat ------------------------------------------------ */
+.ins-scope .ins-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--glass-border);
+  border-radius: 7px;
+  box-shadow: var(--glass-edge);
+}
+.ins-scope .ins-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); border-color: var(--glass-border-strong); }
+.ins-scope .ins-btn--quiet { background: transparent; box-shadow: none; border-color: transparent; }
+.ins-scope .ins-btn--quiet:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); border-color: var(--glass-border); }
+.ins-scope .ins-btn--primary { background: rgba(63, 185, 138, 0.16); border-color: rgba(63, 185, 138, 0.42); }
+.ins-scope .ins-btn--primary:hover:not(:disabled) { background: rgba(63, 185, 138, 0.26); }
+.ins-segmented button.is-on { background: rgba(255, 255, 255, 0.1); }
+
+/* --- Tables inside glass --------------------------------------------------------- */
+.ins-split-list .ins-table thead th {
+  background: rgba(20, 24, 31, 0.72);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+.ins-scope .ins-table tbody tr:hover { background: rgba(255, 255, 255, 0.035); }
+.ins-scope .ins-table--interactive tbody tr.is-focused { background: rgba(255, 255, 255, 0.075); }
+.ins-scope .ins-table td { border-bottom-color: rgba(255, 255, 255, 0.045); }
+
+/* --- Dialogs, menus, toasts float on frosted glass ------------------------------------ */
+.ins-scope .ins-overlay,
+.ins-overlay {
+  background: rgba(5, 7, 10, 0.42);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.ins-scope .ins-modal,
+.ins-tour,
+.ins-toast {
+  background: var(--glass-raised);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border-strong);
+  border-radius: 14px;
+  box-shadow: var(--glass-edge), 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+/* --- Centred loading state -------------------------------------------------------------- */
+.ins-loading {
+  min-height: 52vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: var(--ins-space-6) var(--ins-space-4);
+  color: var(--ins-mist-300);
+}
+.ins-loading strong { color: var(--ins-mist-50); font-size: 1rem; font-weight: 600; }
+.ins-loading p { max-width: 52ch; font-size: 0.8125rem; line-height: 1.5; color: var(--ins-mist-500); }
+.ins-loading-phase { font-size: 0.8125rem; color: var(--ins-safe); }
+.ins-loading-time { font-size: 0.75rem; color: var(--ins-mist-500); }
+.ins-loading--compact { min-height: 0; padding: var(--ins-space-4); flex-direction: row; gap: 12px; text-align: left; }
+.ins-loading--compact .ins-loading-orb { width: 28px; height: 28px; margin: 0; }
+.ins-loading--compact strong { font-size: 0.8125rem; font-weight: 500; }
+
+/* Activity ring on a glass disc. */
+.ins-loading-orb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 10px;
+  border-radius: 50%;
+  background: var(--glass-surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge), 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+.ins-loading-orb > span {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(72, 199, 150, 0) 0deg, rgba(72, 199, 150, 0.95) 300deg, rgba(72, 199, 150, 0) 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  animation: aicc-spin 1s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-loading-orb > span { animation-duration: 3s; }
+}
+
+/* People who ask the OS for less transparency get solid surfaces. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-chrome: #12161d;
+    --glass-surface: #161a21;
+    --glass-raised: #1c2129;
+    --glass-inset: #0f1217;
+    --glass-blur: none;
+  }
+  .ins-shell { background: #0e1116; }
+}

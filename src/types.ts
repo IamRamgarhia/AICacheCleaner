@@ -87,6 +87,15 @@ export type MigrationPackage = {
   timestamp: string;
 };
 
+export type SoftwareGroup = 'ai' | 'model' | 'ai-feature' | 'toolchain' | 'package';
+
+export type SoftwareChild = {
+  name: string;
+  detail?: string;
+  sizeBytes?: number;
+  path?: string;
+};
+
 export type AISoftwareAppItem = {
   id: string;
   name: string;
@@ -104,6 +113,25 @@ export type AISoftwareAppItem = {
   formattedDiskSize: string;
   description: string;
   canUninstall: boolean;
+  // Which section it belongs to. Only "ai" entries can be cleaned or removed;
+  // the others are shown for information because other tools depend on them.
+  //   ai         — AI apps and agents
+  //   model      — AI models on disk (LLM, image, video, speech…)
+  //   ai-feature — apps with AI built in (Photoshop, browsers, WPS…)
+  //   toolchain  — runtimes, containers, databases, drivers AI tools rely on
+  //   package    — libraries and CLIs AI tools installed (npm, Python, uv)
+  group?: SoftwareGroup;
+  publisher?: string;
+  /** The app's own executable, for showing its real icon. */
+  iconPath?: string;
+  /** That icon as a PNG data URL, extracted by the engine (Windows). */
+  iconDataUrl?: string;
+  /** How many processes make up ramMb (Chromium apps run many). */
+  processCount?: number;
+  /** Parts listed in the details pane (each .NET runtime, each npm package…). */
+  children?: SoftwareChild[];
+  /** How to remove it with its own tool (npm uninstall -g …), shown instead of a delete button. */
+  manualCommand?: string;
   // Real on-disk cache locations detected for this software, populated by the
   // detector. Lets the purge flow snapshot the actual software caches instead
   // of an empty list.

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowUp, FolderOpen, HardDrive, Home, Loader2, RefreshCw } from 'lucide-react';
 import { formatBytes } from '../lib/format';
 import { isElectron, showContextMenu } from '../lib/native';
+import { LoadingState } from './LoadingState';
 
 interface Child { name: string; path: string; bytes: number; isDir: boolean; newestMtimeMs: number; pending?: boolean }
 interface Drive { root: string; freeBytes: number; totalBytes: number }
@@ -139,10 +140,10 @@ export const DiskExplorer: React.FC<DiskExplorerProps> = ({ onOpenFolder }) => {
         {error ? (
           <div className="ins-empty"><strong>Could not read this folder</strong>{error}</div>
         ) : children === null ? (
-          <div className="ins-empty">
-            <strong><Loader2 size={14} className="spin" /> Measuring… {elapsed}s</strong>
-            Large folders (a whole drive) can take a few minutes the first time; results are then remembered for 5 minutes.
-          </div>
+          <LoadingState
+            title={`Measuring ${current ?? 'folder'}`}
+            detail="A whole drive can take a few minutes the first time; results are then remembered for 5 minutes."
+          />
         ) : children.length === 0 ? (
           <div className="ins-empty"><strong>Empty folder</strong></div>
         ) : (

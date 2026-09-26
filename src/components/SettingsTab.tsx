@@ -34,6 +34,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
   const [saved, setSaved] = useState<{ ok: boolean; text: string } | null>(null);
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderGb, setReminderGb] = useState(5);
+  const [thresholdNotify, setThresholdNotify] = useState(false);
   const [download, setDownload] = useState<{ pct: number; text: string; ok?: boolean } | null>(null);
 
   useEffect(() => {
@@ -46,6 +47,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
         if (data.customRestorePath) setCustomRestorePath(data.customRestorePath);
         if (typeof data.reminderEnabled === 'boolean') setReminderEnabled(data.reminderEnabled);
         if (typeof data.reminderGb === 'number') setReminderGb(data.reminderGb);
+        if (typeof data.thresholdNotify === 'boolean') setThresholdNotify(data.thresholdNotify);
       })
       .catch(() => {});
   }, []);
@@ -55,7 +57,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
       const res = await fetch('http://127.0.0.1:3333/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cacheThresholdGb, restorePointPolicy, customRestorePath, reminderEnabled, reminderGb })
+        body: JSON.stringify({ cacheThresholdGb, restorePointPolicy, customRestorePath, reminderEnabled, reminderGb, thresholdNotify })
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -75,12 +77,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
     setTimeout(() => setCheckingUpdate(false), 1200);
   };
 
+  // The OS asks once; without permission a notification could never show.
+  const askNotify = async (on: boolean) => {
+    if (on && 'Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
+  };
   const toggleReminder = async (on: boolean) => {
-    // The OS asks once; without permission a reminder could never show.
-    if (on && 'Notification' in window && Notification.permission === 'default') {
-      await Notification.requestPermission();
-    }
+    await askNotify(on);
     setReminderEnabled(on);
+  };
+  const toggleThresholdNotify = async (on: boolean) => {
+    await askNotify(on);
+    setThresholdNotify(on);
   };
 
   const chooseRestoreFolder = async () => {
@@ -193,6 +200,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ updateInfo, onCheckUpd
             <span className="ins-meta" style={{ marginTop: '5px', display: 'block' }}>
               A warning appears in the status bar once your footprint passes this.
             </span>
+            <label className="ins-check" style={{ marginTop: '8px' }}>
+              <input type="checkbox" checked={thresholdNotify} onChange={e => void toggleThresholdNotify(e.target.checked)} />
+              <Bell size={13} /> Also send a system notification (at most once a day)
+            </label>
           </div>
 
           <div>

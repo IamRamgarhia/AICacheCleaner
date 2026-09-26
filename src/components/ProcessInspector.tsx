@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { AIProcessItem } from '../types';
+import { LoadingState } from './LoadingState';
 
 interface ProcessInspectorProps {
   processes: AIProcessItem[];
@@ -62,10 +63,7 @@ export const ProcessInspector: React.FC<ProcessInspectorProps> = ({ processes, o
         {loading && processes.length === 0 ? (
           // Without this the empty state claimed "nothing is running" for the
           // whole duration of the first scan, which is simply untrue.
-          <div className="ins-empty">
-            <strong>Reading running processes…</strong>
-            Collecting live CPU and memory for each AI process.
-          </div>
+          <LoadingState title="Reading running processes" detail="Collecting live CPU and memory for each AI process." />
         ) : filtered.length === 0 ? (
           <div className="ins-empty">
             <strong>No processes match</strong>

@@ -161,3 +161,32 @@ test('Space on a checkbox ticks that row, not the focused one; list keys are ign
   await page.keyboard.press('Delete');
   await expect(dialog).toContainText('npm download cache');
 });
+
+test('installed tools: grouped list, details pane, and info-only rows never offer removal or Stop', async ({ page }) => {
+  await mockApi(page);
+  await openApp(page, 'SOFTWARE');
+  const list = page.getByRole('table', { name: 'Installed software' });
+  const row = (name: string) => list.locator('tr.ins-row', { has: page.locator('.ins-appcell-text', { hasText: new RegExp(`^${name}`) }) });
+  for (const group of ['AI apps and agents', 'Apps with AI built in', 'Software AI tools rely on', 'Packages AI tools installed']) {
+    await expect(list.getByRole('button', { name: group })).toBeVisible();
+  }
+
+  await row('Docker Desktop').click();
+  const pane = page.locator('.ins-details');
+  await expect(pane).toContainText('50.0 GB');
+  await expect(pane.getByRole('button', { name: /Clean or remove/ })).toHaveCount(0);
+  await expect(pane.getByRole('button', { name: /^Stop$/ })).toHaveCount(0);
+  await expect(pane.getByRole('button', { name: /Open folder/ })).toBeVisible();
+
+  // A many-process app gets no Stop either (closing it is done in the app).
+  await row('Claude').click();
+  await expect(pane.getByRole('button', { name: /Clean or remove/ })).toBeVisible();
+  await expect(pane.getByRole('button', { name: /^Stop$/ })).toHaveCount(0);
+
+  await row('onnxruntime').click();
+  await expect(pane).toContainText('pip uninstall onnxruntime');
+
+  await page.getByRole('searchbox', { name: 'Filter the list' }).fill('python');
+  await expect(row('Python')).toBeVisible();
+  await expect(row('Claude')).toHaveCount(0);
+});
